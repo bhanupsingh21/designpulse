@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="page-title">Testing Session · Flowlytics</title>
+  <meta name="description" content="UX testing session">
+  <link rel="stylesheet" href="../css/globals.css">
+  <style>
+    .session-layout {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #000000;
+    }
+
+    .session-header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .session-study-name {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .session-flow-label {
+      font-size: 0.8125rem;
+      color: var(--text-tertiary);
+    }
+
+    .session-content {
+      flex: 1;
+      max-width: 1180px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 28px 24px 40px;
+    }
+
+    .session-columns {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 28px;
+    }
+
+    .session-left {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+    }
+
+    .session-right {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .session-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      padding: 28px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .flow-intro-block {
+      text-align: left;
+      margin-bottom: 20px;
+    }
+
+    .flow-name-display {
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .flow-desc-display {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    .no-figma-placeholder {
+      text-align: center;
+      padding: 48px 24px;
+      border: 2px dashed rgba(255,255,255,0.2);
+      border-radius: var(--radius-lg);
+      color: rgba(255,255,255,0.6);
+      width: 100%;
+      max-width: 375px;
+    }
+
+    .questions-header {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .questions-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .submit-section {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .validation-msg {
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.25);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      font-size: 0.875rem;
+      color: var(--text-danger);
+      display: none;
+      margin-top: 16px;
+    }
+
+    .validation-msg.show { display: block; }
+
+    @media (min-width: 1024px) {
+      .session-content { max-width: none; padding: 0; }
+      .session-columns { display: block; }
+      .session-left {
+        min-height: calc(100vh - 74px);
+        padding-right: 460px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .session-right {
+        position: fixed;
+        bottom: 32px;
+        right: 32px;
+        width: 420px;
+        max-width: calc(100vw - 64px);
+        z-index: 40;
+      }
+      .session-card {
+        max-height: calc(100vh - 160px);
+        overflow-y: auto;
+      }
+      .figma-embed-frame { width: 420px; }
+      .submit-section .btn { width: auto; min-width: 220px; }
+    }
+
+    @media (max-width: 768px) {
+      .session-content { padding: 16px 16px 32px; }
+      .session-card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="toast-container"></div>
+
+  <!-- Flow Transition Overlay -->
+  <div class="flow-transition" id="flow-transition">
+    <span class="material-symbols-outlined flow-transition-icon icon-xl" aria-hidden="true">check_circle</span>
+    <div class="flow-transition-text" id="transition-text">Flow complete!</div>
+    <div class="flow-transition-sub" id="transition-sub">Moving to next flow...</div>
+  </div>
+
+  <div class="session-layout">
+    <!-- Header -->
+    <div class="session-header">
+      <div>
+        <div class="session-study-name" id="header-study-name">Loading...</div>
+        <div class="session-flow-label" id="header-flow-label"></div>
+      </div>
+      <div class="progress-dots" id="progress-dots" style="display:none"></div>
+    </div>
+
+    <!-- Content -->
+    <div class="session-content" id="session-content">
+      <div style="text-align:center;padding:40px;color:rgba(255,255,255,0.6)">
+        <div class="spinner" style="margin:0 auto 12px;border-color:rgba(255,255,255,0.2);border-top-color:#fff"></div>
+        Loading flow...
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPLETE PAGE (hidden until done) -->
+  <div class="complete-page" id="complete-page" style="display:none">
+    <div class="complete-card">
+      <span class="material-symbols-outlined complete-icon icon-xl" aria-hidden="true">celebration</span>
+      <h1 style="font-size:1.5rem;margin-bottom:8px">Test Complete!</h1>
+      <p id="complete-name-msg" style="color:var(--text-secondary);margin-bottom:20px"></p>
+
+      <div style="background:var(--bg-card);border-radius:var(--radius-lg);padding:16px;margin-bottom:24px">
+        <div style="font-size:2rem;font-weight:800;color:var(--text-success)" id="complete-count"></div>
+        <div style="font-size:0.875rem;color:var(--text-tertiary);margin-top:4px">flows completed</div>
+      </div>
+
+      <button class="btn btn-success btn-lg" id="final-submit-btn" onclick="submitFinalTest()" style="width:100%">
+        Submit Test <span class="material-symbols-outlined icon-sm" aria-hidden="true">check</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- THANK YOU PAGE -->
+  <div class="complete-page" id="thankyou-page" style="display:none;background:radial-gradient(ellipse at center, rgba(16,185,129,0.08) 0%, transparent 60%), var(--bg-base)">
+    <div class="complete-card" style="border-color:rgba(16,185,129,0.25)">
+      <span class="material-symbols-outlined icon-xl" style="margin-bottom:20px;color:var(--text-success)" aria-hidden="true">task_alt</span>
+      <h1 style="font-size:1.5rem;margin-bottom:12px">Thank You!</h1>
+      <p style="color:var(--text-secondary);line-height:1.7;margin-bottom:24px">
+        Your feedback has been saved. We really appreciate your time and thoughtful responses.
+      </p>
+      <p style="font-size:0.875rem;color:var(--text-muted)">You can now close this window.</p>
+    </div>
+  </div>
+
+  <script src="../js/store.js"></script>
+  <script src="../js/ui.js"></script>
+  <script>
+    // ===== PARSE URL PARAMS =====
+    const params = new URLSearchParams(window.location.search);
+    const studySlug = params.get('study');
+    const sessionId = params.get('session');
+    const startFlowIdx = parseInt(params.get('flow') || '0', 10);
+
+    let study = null;
+    let session = null;
+    let flows = [];
+    let currentFlowIdx = startFlowIdx;
+    let submitting = false;
+
+    // ===== INIT =====
+    function init() {
+      study = DTH.Studies.getBySlug(studySlug);
+      session = DTH.Sessions.getById(sessionId);
+
+      if (!study || !session) {
+        document.getElementById('session-content').innerHTML = `
+          <div style="text-align:center;padding:60px 20px;color:rgba(255,255,255,0.7)">
+            <span class="material-symbols-outlined" style="font-size:3rem;margin-bottom:16px;color:var(--text-warning)" aria-hidden="true">warning</span>
+            <h2 style="color:#fff">Session Error</h2>
+            <p style="color:rgba(255,255,255,0.7)">Invalid session. Please go back and start again.</p>
+            <a href="${studySlug}.html" class="btn btn-primary" style="margin-top:16px;display:inline-flex"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_back</span> Start Over</a>
+          </div>
+        `;
+        return;
+      }
+
+      document.title = study.name + ' · Flowlytics';
+      document.getElementById('header-study-name').textContent = study.name;
+
+      flows = (study.flows || []).sort((a,b) => a.display_order - b.display_order);
+
+      if (study.settings && study.settings.randomizeFlows) {
+        flows = flows.sort(() => Math.random() - 0.5);
+      }
+
+      renderProgressDots();
+      renderCurrentFlow();
+    }
+
+    function renderProgressDots() {
+      const settings = study.settings || {};
+      if (!settings.showProgress && settings.showProgress !== undefined) return;
+
+      const container = document.getElementById('progress-dots');
+      container.style.display = 'flex';
+
+      const subs = DTH.FlowSubmissions.getBySession(sessionId);
+      const completedIds = subs.filter(s => s.status === 'completed').map(s => s.flow_id);
+
+      container.innerHTML = flows.map((flow, i) => {
+        let cls = 'progress-dot';
+        if (completedIds.includes(flow.id)) cls += ' completed';
+        else if (i === currentFlowIdx) cls += ' active';
+        return `<div class="${cls}" title="Flow ${i+1}: ${flow.name}"></div>`;
+      }).join('');
+    }
+
+    function renderCurrentFlow() {
+      if (currentFlowIdx >= flows.length) {
+        showComplete();
+        return;
+      }
+
+      const flow = flows[currentFlowIdx];
+      const flowNum = currentFlowIdx + 1;
+      const flowTotal = flows.length;
+
+      document.getElementById('header-flow-label').textContent = `Flow ${flowNum} of ${flowTotal}`;
+
+      // Get existing answers for this flow
+      const existingAnswers = DTH.Answers.getByFlowSession(flow.id, sessionId);
+      const answerMap = {};
+      existingAnswers.forEach(a => { answerMap[a.question_id] = a.answer_text; });
+
+      const questions = (flow.questions || []).sort((a,b) => a.display_order - b.display_order);
+      const allowBack = (study.settings || {}).allowBack !== false;
+      const showBack = allowBack && currentFlowIdx > 0;
+
+      const contentEl = document.getElementById('session-content');
+      contentEl.innerHTML = '<div class="session-columns"><div class="session-left" id="session-left"></div><div class="session-right" id="session-right"><div class="session-card" id="session-card"></div></div></div>';
+
+      const leftEl = document.getElementById('session-left');
+      const card = document.getElementById('session-card');
+
+      // Flow intro
+      const introBlock = document.createElement('div');
+      introBlock.className = 'flow-intro-block';
+      introBlock.innerHTML = `
+        <div class="flow-name-display">${flow.name || 'Flow ' + flowNum}</div>
+        ${flow.description ? `<div class="flow-desc-display">${flow.description}</div>` : ''}
+      `;
+      card.appendChild(introBlock);
+
+      // Figma prototype (left column)
+      const protoSection = leftEl;
+
+      if (flow.figma_url && flow.figma_url.includes('figma.com')) {
+        // Build embed URL. Figma's embed API always wraps the ORIGINAL share
+        // URL (proto/file/design, with its own node-id/query params intact)
+        // inside /embed?url=... - there is no separate /embed/<key>/... path.
+        const embedUrl = 'https://www.figma.com/embed?embed_host=share&hide-ui=1&url=' + encodeURIComponent(flow.figma_url);
+
+        const figmaWrapper = document.createElement('div');
+        figmaWrapper.className = 'figma-wrapper';
+        figmaWrapper.innerHTML = `
+          <div class="figma-embed-frame">
+            <div class="figma-loading" id="figma-loading-${flow.id}">
+              <div class="spinner"></div>
+              <span>Loading prototype...</span>
+            </div>
+            <iframe
+              id="figma-iframe-${flow.id}"
+              src="${embedUrl}"
+              allowfullscreen
+              allow="fullscreen"
+              style="opacity:0;transition:opacity 0.3s ease"
+              onload="onFigmaLoad('${flow.id}')"
+              onerror="onFigmaError('${flow.id}','${flow.figma_url}')"
+            ></iframe>
+          </div>
+        `;
+        protoSection.appendChild(figmaWrapper);
+
+        // Fallback link
+        const fallback = document.createElement('div');
+        fallback.id = 'figma-fallback-' + flow.id;
+        fallback.style.display = 'none';
+        fallback.style.textAlign = 'center';
+        fallback.style.marginTop = '16px';
+        fallback.innerHTML = `
+          <p style="color:var(--text-tertiary);font-size:0.875rem;margin-bottom:10px">Prototype couldn't load inside the frame.</p>
+          <a href="${flow.figma_url}" target="_blank" class="btn btn-secondary btn-sm">Open in Figma <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_new</span></a>
+        `;
+        protoSection.appendChild(fallback);
+
+      } else {
+        protoSection.innerHTML += `
+          <div class="no-figma-placeholder">
+            <span class="material-symbols-outlined" style="font-size:2rem;margin-bottom:10px" aria-hidden="true">image_not_supported</span>
+            <div style="font-weight:600;margin-bottom:6px">No Prototype</div>
+            <div style="font-size:0.875rem">A Figma prototype URL hasn't been added for this flow.</div>
+          </div>
+        `;
+      }
+
+      // Questions
+      if (questions.length > 0) {
+        const qHeader = document.createElement('div');
+        qHeader.className = 'questions-header';
+        qHeader.textContent = 'Questions';
+        card.appendChild(qHeader);
+
+        const qList = document.createElement('div');
+        qList.className = 'questions-list';
+        qList.id = 'questions-list';
+
+        questions.forEach(q => {
+          const existing = answerMap[q.id] || null;
+          const qEl = UI.renderQuestionForTester(q, existing);
+          qEl.setAttribute('data-qid', q.id);
+          qEl.setAttribute('data-required', q.required ? '1' : '0');
+          qEl.setAttribute('data-type', q.question_type);
+          qList.appendChild(qEl);
+        });
+
+        card.appendChild(qList);
+      }
+
+      // Validation message
+      const valMsg = document.createElement('div');
+      valMsg.className = 'validation-msg';
+      valMsg.id = 'validation-msg';
+      valMsg.textContent = 'Please answer all required questions before continuing.';
+      card.appendChild(valMsg);
+
+      // Submit section
+      const submitSec = document.createElement('div');
+      submitSec.className = 'submit-section';
+
+      if (showBack) {
+        const backBtn = document.createElement('button');
+        backBtn.className = 'btn btn-ghost btn-sm';
+        backBtn.innerHTML = '<span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_back</span> Previous Flow';
+        backBtn.onclick = goBack;
+        submitSec.appendChild(backBtn);
+      }
+
+      const isLastFlow = currentFlowIdx === flows.length - 1;
+      const submitBtn = document.createElement('button');
+      submitBtn.className = 'btn btn-primary btn-lg';
+      submitBtn.style.minWidth = '240px';
+      submitBtn.id = 'submit-flow-btn';
+      submitBtn.innerHTML = isLastFlow ? 'Submit Final Flow <span class="material-symbols-outlined icon-sm" aria-hidden="true">check</span>' : 'Submit Flow &amp; Continue <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span>';
+      submitBtn.onclick = () => submitFlow(flow);
+      submitSec.appendChild(submitBtn);
+
+      card.appendChild(submitSec);
+      renderProgressDots();
+
+      // Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function onFigmaLoad(flowId) {
+      const iframe = document.getElementById('figma-iframe-' + flowId);
+      const loading = document.getElementById('figma-loading-' + flowId);
+      if (iframe) iframe.style.opacity = '1';
+      if (loading) loading.style.display = 'none';
+    }
+
+    function onFigmaError(flowId, figmaUrl) {
+      const loading = document.getElementById('figma-loading-' + flowId);
+      const fallback = document.getElementById('figma-fallback-' + flowId);
+      if (loading) loading.style.display = 'none';
+      if (fallback) fallback.style.display = 'block';
+    }
+
+    // ===== SUBMIT FLOW =====
+    async function submitFlow(flow) {
+      if (submitting) return;
+
+      const questions = (flow.questions || []);
+      const qContainers = document.querySelectorAll('[data-qid]');
+      const answersMap = {};
+      let hasError = false;
+
+      qContainers.forEach(container => {
+        const qId = container.getAttribute('data-qid');
+        const required = container.getAttribute('data-required') === '1';
+        const answer = UI.getAnswerFromQuestion(container);
+
+        if (required && (!answer || !answer.text)) {
+          container.style.borderColor = 'var(--brand-danger)';
+          hasError = true;
+        } else {
+          container.style.borderColor = '';
+          if (answer && (answer.text || answer.json)) {
+            answersMap[qId] = answer;
+          }
+        }
+      });
+
+      const valMsg = document.getElementById('validation-msg');
+      if (hasError) {
+        valMsg.classList.add('show');
+        valMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+      valMsg.classList.remove('show');
+
+      // Disable submit
+      submitting = true;
+      const btn = document.getElementById('submit-flow-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Saving...';
+
+      // Save answers
+      Object.entries(answersMap).forEach(([qId, val]) => {
+        DTH.Answers.upsert({
+          sessionId: session.id,
+          studyId: study.id,
+          flowId: flow.id,
+          questionId: qId,
+          answerText: val.text || '',
+          answerJson: val.json || null
+        });
+      });
+
+      // Save flow submission
+      DTH.FlowSubmissions.create({ sessionId: session.id, flowId: flow.id });
+
+      // Update session current flow
+      DTH.Sessions.update(session.id, { current_flow: currentFlowIdx + 1 });
+      DTH.Sessions.setCurrentSession(study.id, session.id);
+
+      await new Promise(r => setTimeout(r, 500));
+      submitting = false;
+
+      const isLastFlow = currentFlowIdx === flows.length - 1;
+
+      if (isLastFlow) {
+        showComplete();
+      } else {
+        // Show transition
+        const nextNum = currentFlowIdx + 2;
+        const transitionEl = document.getElementById('flow-transition');
+        document.getElementById('transition-text').textContent = `Flow ${currentFlowIdx + 1} complete!`;
+        document.getElementById('transition-sub').textContent = `Moving to Flow ${nextNum} of ${flows.length}...`;
+        transitionEl.classList.add('show');
+
+        setTimeout(() => {
+          transitionEl.classList.remove('show');
+          currentFlowIdx++;
+          renderCurrentFlow();
+        }, 2000);
+      }
+    }
+
+    function goBack() {
+      if (currentFlowIdx > 0) {
+        currentFlowIdx--;
+        renderCurrentFlow();
+      }
+    }
+
+    // ===== COMPLETE SCREEN =====
+    function showComplete() {
+      document.querySelector('.session-layout').style.display = 'none';
+      const completePage = document.getElementById('complete-page');
+      completePage.style.display = 'flex';
+
+      document.getElementById('complete-name-msg').textContent =
+        `Thank you, ${session.tester_name}. You've reviewed all the designs.`;
+      document.getElementById('complete-count').textContent =
+        `${flows.length} / ${flows.length}`;
+    }
+
+    async function submitFinalTest() {
+      const btn = document.getElementById('final-submit-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Submitting...';
+
+      await new Promise(r => setTimeout(r, 700));
+
+      DTH.Sessions.complete(session.id);
+      DTH.Sessions.clearCurrentSession(study.id);
+
+      document.getElementById('complete-page').style.display = 'none';
+      document.getElementById('thankyou-page').style.display = 'flex';
+    }
+
+    init();
+  </script>
+</body>
+</html>

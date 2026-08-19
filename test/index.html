@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generate Study Pages · Flowlytics</title>
+  <link rel="stylesheet" href="../css/globals.css">
+</head>
+<body>
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg-base);padding:20px">
+    <div style="text-align:center;max-width:500px">
+      <span class="material-symbols-outlined" style="font-size:3rem;margin-bottom:16px;color:var(--text-tertiary)" aria-hidden="true">bolt</span>
+      <h2 style="margin-bottom:8px">Redirecting...</h2>
+      <p style="color:var(--text-secondary)">Finding your study...</p>
+    </div>
+  </div>
+
+  <script src="../js/store.js"></script>
+  <script>
+    // This page handles ALL /test/*.html requests by detecting the slug from the URL
+    // and redirecting to the proper session flow
+
+    DTH.seedDemo();
+
+    const pathParts = window.location.pathname.split('/');
+    const filename = pathParts[pathParts.length - 1];
+    const slug = filename.replace('.html', '');
+
+    if (slug === '_template' || slug === 'index') {
+      // Already on template, do nothing
+    } else {
+      // Redirect to the generic router with slug embedded
+      // The index.html in test/ will handle it
+      // We just need to make sure index.html can read the slug from window.location
+      // Since static HTML can't route dynamically, we re-use index.html logic inline
+      const study = DTH.Studies.getBySlug(slug);
+      if (study) {
+        // Store the target slug and redirect to index with query param
+        window.location.replace('index.html?slug=' + encodeURIComponent(slug));
+      } else {
+        document.body.innerHTML = `
+          <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg-base);padding:20px">
+            <div style="text-align:center;max-width:400px">
+              <span class="material-symbols-outlined" style="font-size:3rem;margin-bottom:16px;color:var(--text-muted)" aria-hidden="true">search</span>
+              <h2 style="margin-bottom:8px">Study Not Found</h2>
+              <p style="color:var(--text-secondary)">No study with slug: <code style="background:var(--bg-surface);border:1px solid var(--border-default);color:var(--text-primary);padding:2px 8px;border-radius:4px">${slug}</code></p>
+            </div>
+          </div>
+        `;
+      }
+    }
+  </script>
+</body>
+</html>

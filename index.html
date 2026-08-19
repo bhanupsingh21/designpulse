@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flowlytics · UX Testing Platform</title>
+  <meta name="description" content="Flowlytics - share Figma prototypes with testers and collect structured feedback">
+  <link rel="stylesheet" href="css/globals.css">
+  <style>
+    .hero {
+      min-height: 100vh;
+      background: var(--bg-surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .hero-content { max-width: 680px; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--bg-card); border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm); padding: 6px 16px;
+      font-size: 0.8125rem; font-weight: 700; color: var(--text-secondary);
+      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 24px;
+    }
+    .hero-title { font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 900; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 20px; }
+    .hero-subtitle { font-size: 1.125rem; color: var(--text-secondary); line-height: 1.7; margin-bottom: 36px; max-width: 500px; margin-left: auto; margin-right: auto; }
+    .hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .hero-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 60px; text-align: left; }
+    .feature-card {
+      background: var(--bg-card); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl); padding: 24px;
+    }
+    .feature-icon { font-size: 1.5rem; margin-bottom: 12px; }
+    .feature-title { font-size: 0.9375rem; font-weight: 700; margin-bottom: 6px; }
+    .feature-desc { font-size: 0.875rem; color: var(--text-tertiary); line-height: 1.6; }
+    @media (max-width: 768px) { .hero-features { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="hero-content">
+      <img src="flowlytics.svg" alt="Flowlytics" style="width:200px;height:auto;margin:0 auto 28px">
+      <div class="hero-badge">Internal UX Testing Platform</div>
+      <h1 class="hero-title">
+        Flowlytics
+      </h1>
+      <p class="hero-subtitle">
+        Share Figma prototypes with testers. Collect structured feedback. Analyze results, all in one place.
+      </p>
+      <div class="hero-cta">
+        <a href="admin/login.html" class="btn btn-primary btn-xl">
+          Open Admin Dashboard
+          <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+        </a>
+        <a href="admin/login.html" class="btn btn-secondary btn-xl">
+          View Demo Results
+        </a>
+      </div>
+
+      <div class="hero-features">
+        <div class="feature-card">
+          <div class="feature-icon"><span class="material-symbols-outlined icon-lg" aria-hidden="true">repeat</span></div>
+          <div class="feature-title">Up to 10 Flows</div>
+          <div class="feature-desc">Each flow has its own Figma prototype and custom questions. Duplicate flows instantly.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><span class="material-symbols-outlined icon-lg" aria-hidden="true">link</span></div>
+          <div class="feature-title">One Shareable Link</div>
+          <div class="feature-desc">Publish once, share a single URL with all testers. They complete flows sequentially.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon"><span class="material-symbols-outlined icon-lg" aria-hidden="true">bar_chart</span></div>
+          <div class="feature-title">Rich Analytics</div>
+          <div class="feature-desc">View ratings, like/dislike breakdowns, written feedback, and per-tester journeys.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/store.js"></script>
+  <script>
+    // Auto-redirect if already logged in
+    if (DTH.Auth.isLoggedIn()) {
+      window.location.href = 'admin/index.html';
+    }
+  </script>
+</body>
+</html>

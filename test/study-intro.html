@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="page-title">Study · Flowlytics</title>
+  <meta name="description" content="UX Testing Study">
+  <link rel="stylesheet" href="../css/globals.css">
+  <style>
+    .intro-instructions {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin: 20px 0;
+      text-align: left;
+    }
+    .name-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      padding: 32px 28px;
+      max-width: 440px;
+      width: 100%;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div id="toast-container"></div>
+
+  <div id="app" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
+  </div>
+
+  <div id="recovery-overlay" class="recovery-overlay" style="display:none">
+    <div class="recovery-card">
+      <span class="material-symbols-outlined" style="font-size:2.5rem;margin-bottom:16px;color:var(--text-tertiary)" aria-hidden="true">refresh</span>
+      <h2 style="font-size:1.25rem;margin-bottom:8px">Resume your test?</h2>
+      <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:24px">
+        We found an unfinished test session. Would you like to continue where you left off?
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-primary" id="continue-btn">Continue Test <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span></button>
+        <button class="btn btn-secondary" id="fresh-btn">Start Again</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/store.js"></script>
+  <script src="../js/ui.js"></script>
+  <script>
+    // ===== DETECT SLUG =====
+    // Supports two modes:
+    // 1. /test/fasttv-home-screen.html  → slug from filename
+    // 2. /test/study-intro.html?slug=fasttv-home-screen → slug from query param
+    function getSlug() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const qSlug = urlParams.get('slug');
+      if (qSlug) return qSlug;
+
+      const pathParts = window.location.pathname.split('/');
+      const filename = pathParts[pathParts.length - 1];
+      const fileSlug = filename.replace('.html', '');
+      if (fileSlug !== 'study-intro' && fileSlug !== 'index') return fileSlug;
+
+      return null;
+    }
+
+    const slug = getSlug();
+    let study = null;
+    let existingSession = null;
+    let flows = [];
+
+    function init() {
+      DTH.seedDemo();
+
+      if (!slug) {
+        document.getElementById('app').innerHTML = `
+          <div style="text-align:center;padding:40px 20px;max-width:400px">
+            <span class="material-symbols-outlined" style="font-size:3rem;margin-bottom:16px;color:var(--text-warning)" aria-hidden="true">warning</span>
+            <h2>No Study Specified</h2>
+            <p style="color:var(--text-secondary);margin-top:8px">Please use a valid study link.</p>
+          </div>
+        `;
+        return;
+      }
+
+      study = DTH.Studies.getBySlug(slug);
+
+      if (!study) {
+        document.getElementById('app').innerHTML = `
+          <div style="text-align:center;padding:40px 20px;max-width:400px">
+            <span class="material-symbols-outlined" style="font-size:3rem;margin-bottom:16px;color:var(--text-muted)" aria-hidden="true">search</span>
+            <h2>Study Not Found</h2>
+            <p style="color:var(--text-secondary);margin-top:8px;line-height:1.6">
+              This study link doesn't exist or has been removed.
+            </p>
+            <p style="color:var(--text-muted);font-size:0.875rem;margin-top:16px">
+              Slug: <code style="background:var(--bg-card);padding:2px 6px;border-radius:4px">${slug}</code>
+            </p>
+          </div>
+        `;
+        return;
+      }
+
+      if (study.status === 'closed') {
+        document.getElementById('app').innerHTML = `
+          <div style="text-align:center;padding:40px 20px;max-width:400px">
+            <span class="material-symbols-outlined" style="font-size:3rem;margin-bottom:16px;color:var(--text-muted)" aria-hidden="true">block</span>
+            <h2>Study Closed</h2>
+            <p style="color:var(--text-secondary);margin-top:8px">This study is no longer accepting new responses.</p>
+          </div>
+        `;
+        return;
+      }
+
+      if (study.status === 'draft' && !DTH.Auth.isLoggedIn()) {
+        document.getElementById('app').innerHTML = `
+          <div style="text-align:center;padding:40px 20px;max-width:400px">
+            <span class="material-symbols-outlined" style="font-size:3rem;margin-bottom:16px;color:var(--text-muted)" aria-hidden="true">lock</span>
+            <h2>Not Published Yet</h2>
+            <p style="color:var(--text-secondary);margin-top:8px">This study hasn't been published yet.</p>
+          </div>
+        `;
+        return;
+      }
+
+      flows = (study.flows || []).sort((a,b) => a.display_order - b.display_order);
+      document.title = study.name + ' · Flowlytics';
+
+      // Session recovery
+      existingSession = DTH.Sessions.getCurrentSession(study.id);
+      if (existingSession) {
+        const overlay = document.getElementById('recovery-overlay');
+        overlay.style.display = 'flex';
+        document.getElementById('continue-btn').onclick = continueSession;
+        document.getElementById('fresh-btn').onclick = startFresh;
+        return;
+      }
+
+      renderIntro();
+    }
+
+    function renderIntro() {
+      const settings = study.settings || {};
+      const estTime = Math.max(3, flows.length * 2);
+      const instructions = study.instructions ? `<div class="intro-instructions">${study.instructions}</div>` : '';
+
+      document.getElementById('app').innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;width:100%;max-width:500px">
+          <div class="study-intro-card">
+            <div class="study-intro-badge">UX Testing Study</div>
+            <h1 style="font-size:1.5rem;margin-bottom:12px">${study.name}</h1>
+            ${study.description ? `<p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:4px">${study.description}</p>` : ''}
+            ${instructions}
+            <div class="study-meta">
+              <div class="study-meta-item"><span class="material-symbols-outlined meta-icon icon-sm" aria-hidden="true">repeat</span> ${flows.length} flow${flows.length !== 1 ? 's' : ''}</div>
+              <div class="study-meta-item"><span class="material-symbols-outlined meta-icon icon-sm" aria-hidden="true">schedule</span> ~${estTime} min</div>
+              <div class="study-meta-item"><span class="material-symbols-outlined meta-icon icon-sm" aria-hidden="true">smartphone</span> Figma prototypes</div>
+            </div>
+            <div style="margin-top:28px">
+              <button class="btn btn-primary btn-lg" style="width:100%" onclick="showNameEntry()">
+                Begin <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function showNameEntry() {
+      const settings = study.settings || {};
+      if (settings.allowAnonymous && !settings.collectName) {
+        createAndStart('Anonymous', '');
+        return;
+      }
+
+      const emailField = settings.collectEmail ? `
+        <div class="form-group">
+          <label class="form-label" for="tester-email">Email (optional)</label>
+          <input id="tester-email" type="email" class="form-input" placeholder="your@email.com" autocomplete="email">
+        </div>
+      ` : '';
+
+      document.getElementById('app').innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;width:100%;max-width:500px">
+          <div class="name-section">
+            <h2 style="font-size:1.25rem;margin-bottom:6px">Before we begin</h2>
+            <p style="font-size:0.875rem;color:var(--text-secondary);margin-bottom:20px">Tell us a little about yourself</p>
+            <form id="name-form" style="display:flex;flex-direction:column;gap:14px">
+              <div class="form-group">
+                <label class="form-label" for="tester-name">Your Name <span class="required">*</span></label>
+                <input id="tester-name" type="text" class="form-input" placeholder="Enter your name" autocomplete="name" required autofocus>
+              </div>
+              ${emailField}
+              <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px" id="start-btn">
+                Start Testing <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span>
+              </button>
+            </form>
+            <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px" onclick="renderIntro()"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_back</span> Back</button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('name-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('tester-name').value.trim();
+        const emailEl = document.getElementById('tester-email');
+        const email = emailEl ? emailEl.value.trim() : '';
+        if (!name) {
+          document.getElementById('tester-name').classList.add('error');
+          UI.toast('Please enter your name', 'error');
+          return;
+        }
+        const btn = document.getElementById('start-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Starting...';
+        await new Promise(r => setTimeout(r, 400));
+        createAndStart(name, email);
+      });
+    }
+
+    function createAndStart(name, email) {
+      const session = DTH.Sessions.create({ studyId: study.id, testerName: name, testerEmail: email });
+      DTH.Sessions.setCurrentSession(study.id, session.id);
+      goToSession(session.id, 0);
+    }
+
+    function continueSession() {
+      document.getElementById('recovery-overlay').style.display = 'none';
+      const subs = DTH.FlowSubmissions.getBySession(existingSession.id);
+      const completedIds = subs.filter(s => s.status === 'completed').map(s => s.flow_id);
+      const nextIdx = flows.findIndex(f => !completedIds.includes(f.id));
+      const startIdx = nextIdx >= 0 ? nextIdx : 0;
+      goToSession(existingSession.id, startIdx);
+    }
+
+    function startFresh() {
+      document.getElementById('recovery-overlay').style.display = 'none';
+      DTH.Sessions.clearCurrentSession(study.id);
+      existingSession = null;
+      renderIntro();
+    }
+
+    function goToSession(sessionId, flowIndex) {
+      window.location.href = 'session.html?study=' + slug + '&session=' + sessionId + '&flow=' + flowIndex;
+    }
+
+    init();
+  </script>
+</body>
+</html>

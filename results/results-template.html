@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="page-title">Results · Flowlytics</title>
+  <meta name="description" content="Study results and analytics">
+  <link rel="stylesheet" href="../css/globals.css">
+  <style>
+    .results-layout { min-height: 100vh; background: var(--bg-base); }
+    .results-header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 32px 40px;
+    }
+    .results-body { padding: 32px 40px; max-width: 1100px; margin: 0 auto; }
+    .flow-results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .flow-result-card {
+      background: var(--bg-card); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl); padding: 24px;
+      transition: all var(--transition-fast); cursor: pointer;
+    }
+    .flow-result-card:hover { border-color: var(--brand-primary); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .flow-card-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--brand-accent), var(--brand-primary));
+      border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: 800; color: #fff; margin-bottom: 12px;
+    }
+    .flow-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+    .flow-metric { text-align: center; background: var(--bg-surface); border-radius: var(--radius-md); padding: 10px 6px; }
+    .flow-metric-val { font-size: 1.1rem; font-weight: 800; color: var(--text-primary); }
+    .flow-metric-label { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+    .testers-list { display: flex; flex-direction: column; gap: 8px; }
+    .tester-row {
+      display: flex; align-items: center; gap: 14px; padding: 14px 18px;
+      background: var(--bg-card); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg); cursor: pointer; transition: all var(--transition-fast);
+    }
+    .tester-row:hover { border-color: var(--border-default); background: var(--bg-card-hover); }
+    .tester-avatar {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--brand-accent), var(--brand-primary));
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 0.875rem; color: #fff; flex-shrink: 0;
+    }
+    .tester-info { flex: 1; min-width: 0; }
+    .tester-name { font-weight: 600; font-size: 0.9rem; }
+    .tester-meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+    .completion-pill { padding: 3px 10px; border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: 700; }
+    .pill-complete { background: rgba(16,185,129,0.1); color: var(--text-success); border: 1px solid rgba(16,185,129,0.3); }
+    .pill-partial { background: rgba(245,158,11,0.12); color: var(--text-warning); border: 1px solid rgba(245,158,11,0.3); }
+    .detail-panel { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); overflow: hidden; margin-bottom: 20px; }
+    .detail-panel-header { padding: 18px 24px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 12px; background: var(--bg-surface); }
+    .detail-panel-body { padding: 24px; }
+    .like-display { display: flex; gap: 12px; }
+    .like-bar { flex: 1; padding: 14px; border-radius: var(--radius-md); text-align: center; }
+    .like-bar-val { font-size: 1.5rem; font-weight: 800; }
+    .like-bar-label { font-size: 0.8rem; margin-top: 4px; }
+    .feedback-quote {
+      background: var(--bg-surface); border-left: 3px solid var(--brand-primary);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      padding: 12px 16px; font-size: 0.9rem; color: var(--text-secondary);
+      margin-bottom: 8px; font-style: italic;
+    }
+    .tabs { display: flex; gap: 4px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 4px; margin-bottom: 24px; }
+    .tab-btn { flex: 1; padding: 8px 12px; border-radius: var(--radius-md); border: none; background: transparent; color: var(--text-secondary); font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all var(--transition-fast); font-family: inherit; }
+    .tab-btn.active { background: var(--bg-card); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+    @media (max-width: 768px) { .results-header, .results-body { padding: 20px; } }
+  </style>
+</head>
+<body>
+  <div id="toast-container"></div>
+
+  <div class="results-layout" id="results-layout">
+    <div id="results-header" class="results-header">
+      <div style="max-width:1100px;margin:0 auto">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <a href="../admin/index.html" class="btn btn-ghost btn-sm" style="color:var(--text-secondary)"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_back</span> Dashboard</a>
+          <span style="color:var(--text-muted)">/</span>
+          <span id="breadcrumb" style="font-size:0.875rem;color:var(--text-secondary)">Results</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+          <div>
+            <h1 id="results-study-name" style="font-size:1.5rem;margin-bottom:4px">Loading...</h1>
+            <div id="results-meta" style="font-size:0.875rem;color:var(--text-secondary)"></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-secondary btn-sm" onclick="copyLink()"><span class="material-symbols-outlined icon-sm" aria-hidden="true">link</span> Copy Test Link</button>
+            <button class="btn btn-secondary btn-sm" onclick="doExport()"><span class="material-symbols-outlined icon-sm" aria-hidden="true">file_download</span> Export CSV</button>
+            <button class="btn btn-secondary btn-sm" id="edit-btn"><span class="material-symbols-outlined icon-sm" aria-hidden="true">edit</span> Edit</button>
+          </div>
+        </div>
+        <div id="header-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:24px"></div>
+      </div>
+    </div>
+
+    <div class="results-body">
+      <div class="tabs">
+        <button class="tab-btn active" id="tab-flows" onclick="showTab('flows')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">bar_chart</span> Flow Results</button>
+        <button class="tab-btn" id="tab-testers" onclick="showTab('testers')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">group</span> Testers</button>
+      </div>
+
+      <div id="tab-flows-content">
+        <div class="flow-results-grid" id="flow-results-grid"></div>
+        <div id="flow-detail-section" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <button class="btn btn-ghost btn-sm" onclick="hideFlowDetail()"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_back</span> All Flows</button>
+            <h2 id="flow-detail-name" style="font-size:1.125rem;font-weight:700"></h2>
+          </div>
+          <div id="flow-detail-content"></div>
+        </div>
+      </div>
+
+      <div id="tab-testers-content" style="display:none">
+        <div class="testers-list" id="testers-list"></div>
+        <div id="tester-detail-section" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <button class="btn btn-ghost btn-sm" onclick="hideTesterDetail()"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_back</span> All Testers</button>
+            <h2 id="tester-detail-name" style="font-size:1.125rem;font-weight:700"></h2>
+          </div>
+          <div id="tester-detail-content"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/store.js"></script>
+  <script src="../js/ui.js"></script>
+  <script>
+    function getSlug() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const q = urlParams.get('slug');
+      if (q) return q;
+      const parts = window.location.pathname.split('/');
+      const f = parts[parts.length - 1];
+      const s = f.replace('.html', '');
+      if (s !== 'results-template' && s !== 'index') return s;
+      return null;
+    }
+
+    const slug = getSlug();
+    let study = null, studyId = null, sessions = [], flows = [];
+
+    function init() {
+      DTH.seedDemo();
+
+      if (!slug) {
+        document.getElementById('results-layout').innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-secondary)"><h2>No Study Specified</h2></div>`;
+        return;
+      }
+
+      study = DTH.Studies.getBySlug(slug);
+      if (!study) {
+        document.getElementById('results-layout').innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-secondary)"><h2>Study Not Found</h2><p>Slug: ${slug}</p><a href="../admin/index.html" class="btn btn-primary" style="margin-top:16px;display:inline-flex"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_back</span> Dashboard</a></div>`;
+        return;
+      }
+
+      studyId = study.id;
+      flows = (study.flows || []).sort((a,b) => a.display_order - b.display_order);
+      sessions = DTH.Sessions.getByStudy(studyId);
+
+      document.title = study.name + ' Results · Flowlytics';
+      document.getElementById('results-study-name').textContent = study.name;
+      document.getElementById('breadcrumb').textContent = study.name;
+      document.getElementById('results-meta').innerHTML = `${UI.statusBadge(study.status)} &nbsp; ${flows.length} flows &nbsp;·&nbsp; Created ${UI.formatDate(study.created_at)}`;
+      document.getElementById('edit-btn').onclick = () => { window.location.href = '../admin/edit.html?id=' + studyId; };
+
+      renderStats();
+      renderFlowResults();
+      renderTesters();
+    }
+
+    function renderStats() {
+      const stats = DTH.Analytics.studyStats(studyId);
+      document.getElementById('header-stats').innerHTML = `
+        <div class="stat-card"><div class="stat-value">${stats.total}</div><div class="stat-label">Total Testers</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.completed}</div><div class="stat-label">Completed</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.completionRate}%</div><div class="stat-label">Completion Rate</div></div>
+        <div class="stat-card"><div class="stat-value">${UI.formatTime(stats.avgTimeMs)}</div><div class="stat-label">Avg. Time</div></div>
+      `;
+    }
+
+    function renderFlowResults() {
+      const grid = document.getElementById('flow-results-grid');
+      if (!flows.length) { grid.innerHTML = '<div style="color:var(--text-muted);padding:40px">No flows yet.</div>'; return; }
+      grid.innerHTML = flows.map((flow, i) => {
+        const stats = DTH.Analytics.flowStats(studyId, flow.id);
+        const qCount = (flow.questions || []).length;
+        return `
+          <div class="flow-result-card" onclick="showFlowDetail('${flow.id}')">
+            <div class="flow-card-num">${i+1}</div>
+            <div style="font-weight:700;font-size:0.9375rem;margin-bottom:4px">${flow.name}</div>
+            <div style="font-size:0.8rem;color:var(--text-muted)">${qCount} question${qCount !== 1 ? 's' : ''}</div>
+            <div class="flow-metrics">
+              <div class="flow-metric"><div class="flow-metric-val">${stats.responses}</div><div class="flow-metric-label">Responses</div></div>
+              <div class="flow-metric"><div class="flow-metric-val">${stats.avgRating ? stats.avgRating + ' <span class=\"material-symbols-outlined icon-xs\" aria-hidden=\"true\">star</span>' : '-'}</div><div class="flow-metric-label">Avg Rating</div></div>
+              <div class="flow-metric"><div class="flow-metric-val">${stats.likePercent !== null ? stats.likePercent + '%' : '-'}</div><div class="flow-metric-label">Like %</div></div>
+            </div>
+            <div style="margin-top:12px;text-align:right"><span style="font-size:0.8rem;color:var(--brand-primary-dark);font-weight:600;display:inline-flex;align-items:center;gap:2px">View Details <span class="material-symbols-outlined icon-xs" aria-hidden="true">arrow_forward</span></span></div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showFlowDetail(flowId) {
+      const flow = flows.find(f => f.id === flowId);
+      if (!flow) return;
+      document.getElementById('flow-results-grid').style.display = 'none';
+      document.getElementById('flow-detail-section').style.display = 'block';
+      document.getElementById('flow-detail-name').textContent = flow.name;
+
+      const questions = (flow.questions || []).sort((a,b) => a.display_order - b.display_order);
+      const content = document.getElementById('flow-detail-content');
+      content.innerHTML = '';
+
+      questions.forEach(q => {
+        const qStats = DTH.Analytics.questionStats(flowId, q.id);
+        const block = document.createElement('div');
+        block.className = 'detail-panel';
+        let resultHtml = '';
+
+        switch(q.question_type) {
+          case 'rating':
+            resultHtml = `<div id="rchart-${q.id}"></div>`;
+            break;
+          case 'like_dislike': {
+            const l = qStats.distribution['like'] || 0, d = qStats.distribution['dislike'] || 0;
+            const t = l + d, lp = t > 0 ? Math.round(l/t*100) : 0;
+            resultHtml = `<div class="like-display">
+              <div class="like-bar" style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3)"><div class="like-bar-val" style="color:var(--text-success);display:flex;align-items:center;justify-content:center;gap:6px"><span class="material-symbols-outlined" aria-hidden="true">thumb_up</span> ${l}</div><div class="like-bar-label" style="color:var(--text-success)">${lp}% Like</div></div>
+              <div class="like-bar" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3)"><div class="like-bar-val" style="color:var(--text-danger);display:flex;align-items:center;justify-content:center;gap:6px"><span class="material-symbols-outlined" aria-hidden="true">thumb_down</span> ${d}</div><div class="like-bar-label" style="color:var(--text-danger)">${100-lp}% Dislike</div></div>
+            </div>`;
+            break;
+          }
+          case 'yes_no': {
+            const y = qStats.distribution['yes'] || 0, n = qStats.distribution['no'] || 0;
+            const t = y + n, yp = t > 0 ? Math.round(y/t*100) : 0;
+            resultHtml = `<div class="like-display">
+              <div class="like-bar" style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3)"><div class="like-bar-val" style="color:var(--text-success)">${y}</div><div class="like-bar-label" style="color:var(--text-success)">Yes (${yp}%)</div></div>
+              <div class="like-bar" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3)"><div class="like-bar-val" style="color:var(--text-danger)">${n}</div><div class="like-bar-label" style="color:var(--text-danger)">No (${100-yp}%)</div></div>
+            </div>`;
+            break;
+          }
+          case 'single_choice': case 'multiple_choice': {
+            const entries = Object.entries(qStats.distribution).sort(([,a],[,b]) => b-a);
+            const tot = entries.reduce((s,[,c]) => s+c, 0);
+            resultHtml = entries.map(([opt, count]) => `
+              <div class="chart-bar-row">
+                <div class="chart-bar-label" style="min-width:120px;font-size:0.8rem;color:var(--text-secondary)">${opt}</div>
+                <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${tot>0?Math.round(count/tot*100):0}%"></div></div>
+                <div class="chart-bar-count">${count}</div>
+              </div>`).join('');
+            break;
+          }
+          default: {
+            const texts = qStats.answers.filter(a => a.answer_text && a.answer_text.trim());
+            resultHtml = texts.length === 0
+              ? '<div style="color:var(--text-muted);font-size:0.875rem">No responses yet.</div>'
+              : texts.slice(0,15).map(a => `<div class="feedback-quote">${a.answer_text}</div>`).join('') +
+                (texts.length > 15 ? `<div style="color:var(--text-muted);font-size:0.8rem">+${texts.length-15} more</div>` : '');
+          }
+        }
+
+        block.innerHTML = `
+          <div class="detail-panel-header">
+            <div>
+              <div style="font-size:0.75rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">${UI.questionTypeLabel(q.question_type)}</div>
+              <div style="font-size:0.9375rem;font-weight:600">${q.question_text}</div>
+            </div>
+            <div style="font-size:0.875rem;font-weight:700;color:var(--text-secondary);margin-left:auto">${qStats.count} responses</div>
+          </div>
+          <div class="detail-panel-body">${resultHtml}</div>
+        `;
+        content.appendChild(block);
+
+        if (q.question_type === 'rating') {
+          const chartEl = document.getElementById('rchart-' + q.id);
+          if (chartEl) chartEl.appendChild(UI.renderRatingChart(qStats.distribution));
+        }
+      });
+    }
+
+    function hideFlowDetail() {
+      document.getElementById('flow-results-grid').style.display = 'grid';
+      document.getElementById('flow-detail-section').style.display = 'none';
+    }
+
+    function renderTesters() {
+      const list = document.getElementById('testers-list');
+      const subs = DTH.FlowSubmissions.getAll();
+      if (!sessions.length) {
+        list.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-muted)"><span class="material-symbols-outlined" style="font-size:3rem;margin-bottom:12px" aria-hidden="true">group</span><div style="font-weight:600">No testers yet</div></div>`;
+        return;
+      }
+      const sorted = [...sessions].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+      list.innerHTML = sorted.map(session => {
+        const sessionSubs = subs.filter(s => s.session_id === session.id && s.status === 'completed');
+        const dur = session.completed_at ? UI.formatTime(new Date(session.completed_at) - new Date(session.started_at)) : '-';
+        return `
+          <div class="tester-row" onclick="showTesterDetail('${session.id}')">
+            <div class="tester-avatar">${(session.tester_name||'A').charAt(0).toUpperCase()}</div>
+            <div class="tester-info">
+              <div class="tester-name">${session.tester_name}</div>
+              <div class="tester-meta">${sessionSubs.length}/${flows.length} flows · ${UI.formatDate(session.created_at)} · ${dur}</div>
+            </div>
+            <span class="completion-pill ${session.status === 'completed' ? 'pill-complete' : 'pill-partial'}">${session.status === 'completed' ? 'Complete' : 'Partial'}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showTesterDetail(sid) {
+      const session = DTH.Sessions.getById(sid);
+      if (!session) return;
+      document.getElementById('testers-list').style.display = 'none';
+      document.getElementById('tester-detail-section').style.display = 'block';
+      document.getElementById('tester-detail-name').textContent = session.tester_name;
+
+      const answers = DTH.Answers.getBySession(sid);
+      const subs = DTH.FlowSubmissions.getBySession(sid);
+      const completedIds = subs.filter(s => s.status === 'completed').map(s => s.flow_id);
+      const dur = session.completed_at ? UI.formatTime(new Date(session.completed_at) - new Date(session.started_at)) : 'In Progress';
+
+      const content = document.getElementById('tester-detail-content');
+      content.innerHTML = `
+        <div class="detail-panel" style="margin-bottom:20px">
+          <div class="detail-panel-body">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+              <div><div style="font-size:1.5rem;font-weight:800;color:var(--text-primary)">${completedIds.length}/${flows.length}</div><div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px">Flows Completed</div></div>
+              <div><div style="font-size:1.5rem;font-weight:800;color:var(--text-primary)">${dur}</div><div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px">Time Spent</div></div>
+              <div><div style="font-size:1.5rem;font-weight:800">${UI.statusBadge(session.status)}</div><div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px">Status</div></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      flows.forEach((flow, fi) => {
+        const flowAnswers = answers.filter(a => a.flow_id === flow.id);
+        const done = completedIds.includes(flow.id);
+        const questions = (flow.questions || []).sort((a,b) => a.display_order - b.display_order);
+        const block = document.createElement('div');
+        block.className = 'detail-panel';
+        block.style.marginBottom = '16px';
+        const rows = questions.map(q => {
+          const ans = flowAnswers.find(a => a.question_id === q.id);
+          return `<div style="padding:12px 0;border-bottom:1px solid var(--border-subtle)">
+            <div style="font-size:0.8125rem;color:var(--text-muted);margin-bottom:4px">${q.question_text}</div>
+            <div style="font-size:0.9rem;color:var(--text-primary);font-weight:500">${ans ? (ans.answer_text || '-') : '-'}</div>
+          </div>`;
+        }).join('');
+        block.innerHTML = `
+          <div class="detail-panel-header">
+            <div class="flow-card-num">${fi+1}</div>
+            <div style="flex:1"><div style="font-weight:700">${flow.name}</div></div>
+            <span class="completion-pill ${done ? 'pill-complete' : 'pill-partial'}">${done ? 'Done' : 'Skipped'}</span>
+          </div>
+          <div class="detail-panel-body" style="padding:0 24px">${rows || '<div style="padding:16px 0;color:var(--text-muted);font-size:0.875rem">No answers recorded</div>'}<div style="height:8px"></div></div>
+        `;
+        content.appendChild(block);
+      });
+    }
+
+    function hideTesterDetail() {
+      document.getElementById('testers-list').style.display = 'flex';
+      document.getElementById('tester-detail-section').style.display = 'none';
+    }
+
+    function showTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      document.getElementById('tab-flows-content').style.display = tab === 'flows' ? 'block' : 'none';
+      document.getElementById('tab-testers-content').style.display = tab === 'testers' ? 'block' : 'none';
+    }
+
+    async function copyLink() {
+      if (!study) return;
+      const url = window.location.origin + window.location.pathname.replace('/results/' + slug + '.html', '') + '/test/study-intro.html?slug=' + study.slug;
+      await UI.copyToClipboard(url);
+      UI.toast('Test link copied!', 'success');
+    }
+
+    function doExport() {
+      if (!studyId) return;
+      DTH.downloadCSV(studyId);
+      UI.toast('Downloading CSV...', 'success');
+    }
+
+    init();
+  </script>
+</body>
+</html>

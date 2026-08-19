@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Study · Flowlytics</title>
+  <meta name="description" content="Create a new UX testing study with flows and questions">
+  <link rel="stylesheet" href="../css/globals.css">
+  <style>
+    .section-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .section-card-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex; align-items: center; gap: 12px;
+      background: var(--bg-surface);
+    }
+    .section-card-body { padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+
+    .flow-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .add-flow-area {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; padding: 20px;
+      border: 2px dashed var(--border-default);
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      color: var(--text-tertiary);
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    .add-flow-area:hover { border-color: var(--brand-primary); color: var(--text-primary); background: var(--bg-card-hover); }
+    .add-flow-area.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+    .options-list { display: flex; flex-direction: column; gap: 8px; }
+    .option-row {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .option-row input { flex: 1; }
+    .option-remove { color: var(--text-muted); cursor: pointer; background: none; border: none; padding: 4px; transition: color var(--transition-fast); display: inline-flex; }
+    .option-remove:hover { color: var(--text-danger); }
+
+    .question-list-admin { display: flex; flex-direction: column; gap: 8px; }
+
+    .q-admin-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+      display: flex; align-items: flex-start; gap: 12px;
+      transition: border-color var(--transition-fast);
+    }
+    .q-admin-card:hover { border-color: var(--border-default); }
+
+    .q-admin-info { flex: 1; min-width: 0; }
+    .q-admin-text { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .q-admin-meta { font-size: 0.75rem; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
+    .q-admin-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+
+    .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .publish-panel {
+      background: rgba(16,185,129,0.06);
+      border: 1px solid rgba(16,185,129,0.25);
+      border-radius: var(--radius-xl);
+      padding: 28px;
+      margin-top: 24px;
+    }
+
+    .sticky-bar {
+      position: sticky;
+      bottom: 0;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-subtle);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      z-index: 50;
+      margin: 0 -40px;
+    }
+
+    @media (max-width: 768px) {
+      .settings-grid { grid-template-columns: 1fr; }
+      .sticky-bar { margin: 0 -20px; }
+    }
+    #publish-btn-2 {
+      background: var(--brand-primary);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    }
+    #publish-btn-2:hover:not(:disabled) {
+      background: var(--brand-primary-dark);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.26);
+    }
+    .sidebar-sections-list { display: flex; flex-direction: column; gap: 2px; }
+    .sidebar-flow-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--radius-md);
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+      transition: all var(--transition-fast);
+    }
+    .sidebar-flow-item:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+    .sidebar-flow-icon {
+      width: 26px; height: 26px;
+      flex-shrink: 0;
+      border-radius: var(--radius-sm);
+      background: var(--bg-card-hover);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-tertiary);
+    }
+    .sidebar-flow-label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="toast-container"></div>
+
+  <div class="admin-layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-mark">
+          <img src="../flowlytics.svg" alt="Flowlytics" class="logo-wordmark">
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <span class="nav-label">Sections</span>
+        <button class="sidebar-flow-item" onclick="jumpToSection('study-details-card')">
+          <span class="sidebar-flow-icon"><span class="material-symbols-outlined icon-xs" aria-hidden="true">front_hand</span></span>
+          <span class="sidebar-flow-label">Welcome screen</span>
+        </button>
+        <div class="sidebar-sections-list" id="sidebar-sections-list"></div>
+      </nav>
+    </aside>
+
+    <main class="admin-main">
+      <div class="page-container">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title" id="page-title-text">Create New Study</h1>
+            <p class="page-subtitle">Build your UX testing study with flows and questions</p>
+          </div>
+        </div>
+
+        <!-- Unsaved banner -->
+        <div class="unsaved-banner hidden" id="unsaved-banner">
+          <span class="unsaved-banner-text"><span class="material-symbols-outlined icon-sm" aria-hidden="true">warning</span> Unsaved changes</span>
+          <button class="btn btn-sm btn-secondary" onclick="saveStudy()">Save Changes</button>
+        </div>
+
+        <!-- STUDY DETAILS -->
+        <div class="section-card" id="study-details-card">
+          <div class="section-card-header">
+            <span class="material-symbols-outlined" aria-hidden="true">assignment</span>
+            <div>
+              <h3>Study Details</h3>
+              <p style="font-size:0.8rem;color:var(--text-muted);margin:0">Basic information about this study</p>
+            </div>
+          </div>
+          <div class="section-card-body">
+            <div class="form-group">
+              <label class="form-label" for="study-name">Study Name <span class="required">*</span></label>
+              <input id="study-name" type="text" class="form-input" placeholder="e.g. FastTV Home Screen Evaluation" oninput="markDirty()">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="study-desc">Description</label>
+              <textarea id="study-desc" class="form-textarea" placeholder="Describe the purpose of this study..." oninput="markDirty()" rows="2"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="study-instructions">Tester Instructions</label>
+              <textarea id="study-instructions" class="form-textarea" placeholder="Instructions shown to testers before they start..." oninput="markDirty()" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="study-slug">URL Slug</label>
+              <div style="display:flex;gap:8px">
+                <input id="study-slug" type="text" class="form-input" placeholder="fasttv-home-screen" oninput="markDirty()" style="font-family:var(--font-mono);font-size:0.875rem">
+              </div>
+              <span class="form-hint">Customise the URL: /test/<span id="slug-preview">your-slug</span>.html</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- FLOW BUILDER -->
+        <div class="section-card">
+          <div class="section-card-header">
+            <span class="material-symbols-outlined" aria-hidden="true">repeat</span>
+            <div style="flex:1">
+              <h3>Flow Builder</h3>
+              <p style="font-size:0.8rem;color:var(--text-muted);margin:0">Add up to 10 prototype flows</p>
+            </div>
+            <span id="flow-count-badge" style="font-size:0.8rem;color:var(--text-muted)">0 / 10</span>
+          </div>
+          <div style="padding:20px">
+            <div class="flow-list" id="flow-list"></div>
+            <div id="add-flow-area" class="add-flow-area" onclick="addFlow()">
+              <span class="material-symbols-outlined" aria-hidden="true">add</span>
+              <span>Add Flow</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- STUDY SETTINGS -->
+        <div class="section-card">
+          <div class="section-card-header">
+            <span class="material-symbols-outlined" aria-hidden="true">settings</span>
+            <div>
+              <h3>Study Settings</h3>
+              <p style="font-size:0.8rem;color:var(--text-muted);margin:0">Configure tester experience</p>
+            </div>
+          </div>
+          <div class="section-card-body">
+            <div class="settings-grid">
+              <label class="toggle-wrapper" for="setting-name">
+                <div class="toggle"><input type="checkbox" id="setting-name" checked onchange="markDirty()"><div class="toggle-track"></div></div>
+                <span class="toggle-label">Collect tester name</span>
+              </label>
+              <label class="toggle-wrapper" for="setting-email">
+                <div class="toggle"><input type="checkbox" id="setting-email" onchange="markDirty()"><div class="toggle-track"></div></div>
+                <span class="toggle-label">Collect email (optional)</span>
+              </label>
+              <label class="toggle-wrapper" for="setting-progress">
+                <div class="toggle"><input type="checkbox" id="setting-progress" checked onchange="markDirty()"><div class="toggle-track"></div></div>
+                <span class="toggle-label">Show progress indicator</span>
+              </label>
+              <label class="toggle-wrapper" for="setting-back">
+                <div class="toggle"><input type="checkbox" id="setting-back" checked onchange="markDirty()"><div class="toggle-track"></div></div>
+                <span class="toggle-label">Allow tester to go back</span>
+              </label>
+              <label class="toggle-wrapper" for="setting-random">
+                <div class="toggle"><input type="checkbox" id="setting-random" onchange="markDirty()"><div class="toggle-track"></div></div>
+                <span class="toggle-label">Randomize flow order</span>
+              </label>
+              <label class="toggle-wrapper" for="setting-anon">
+                <div class="toggle"><input type="checkbox" id="setting-anon" onchange="markDirty()"><div class="toggle-track"></div></div>
+                <span class="toggle-label">Allow anonymous testing</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- PUBLISH PANEL -->
+        <div class="publish-panel" id="publish-panel" style="display:none">
+          <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+            <div style="flex:1">
+              <h3 style="color:var(--text-success);margin-bottom:8px;display:flex;align-items:center;gap:8px"><span class="material-symbols-outlined" aria-hidden="true">celebration</span> Study Published!</h3>
+              <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:16px">Share this link with your testers</p>
+              <div class="copy-field" id="tester-link-field">
+                <input class="copy-field-url" id="tester-link-url" readonly value="">
+                <button class="btn btn-primary btn-sm" onclick="copyTesterLink()">Copy</button>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button class="btn btn-secondary btn-sm" onclick="openTesterLink()">Open Test <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span></button>
+              <button class="btn btn-secondary btn-sm" id="view-results-btn" onclick="viewResults()"><span class="material-symbols-outlined icon-sm" aria-hidden="true">bar_chart</span> View Results</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="height:80px"></div>
+
+      </div>
+
+      <!-- STICKY SAVE BAR -->
+      <div class="sticky-bar">
+        <div style="font-size:0.875rem;color:var(--text-tertiary)" id="save-status">Draft</div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-secondary" onclick="UI.navigate('index.html')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_back</span> Back to Dashboard</button>
+          <button class="btn btn-secondary" id="save-btn-2" onclick="saveStudy()">Save</button>
+          <button class="btn btn-success" id="publish-btn-2" onclick="publishStudy()"><span class="material-symbols-outlined icon-sm" aria-hidden="true">rocket_launch</span> Publish Study</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- QUESTION EDITOR MODAL content injected dynamically -->
+
+  <script src="../js/store.js"></script>
+  <script src="../js/ui.js"></script>
+  <script>
+    if (!DTH.Auth.isLoggedIn()) { window.location.href = 'login.html'; }
+
+    // ===== STATE =====
+    let studyId = null;
+    let isDirty = false;
+    let editMode = false;
+
+    // Check if editing
+    const urlParams = new URLSearchParams(window.location.search);
+    const editId = urlParams.get('id');
+    if (editId) {
+      studyId = editId;
+      editMode = true;
+      document.getElementById('page-title-text').textContent = 'Edit Study';
+      document.getElementById('publish-btn-2').innerHTML = '<span class="material-symbols-outlined icon-sm" aria-hidden="true">rocket_launch</span> Save & Publish';
+    }
+
+    // ===== INIT =====
+    function init() {
+      if (editMode && studyId) {
+        loadStudyForEdit();
+      }
+      setupSlugSync();
+      renderFlows();
+    }
+
+    function loadStudyForEdit() {
+      const study = DTH.Studies.getById(studyId);
+      if (!study) return;
+
+      document.getElementById('study-name').value = study.name;
+      document.getElementById('study-desc').value = study.description || '';
+      document.getElementById('study-instructions').value = study.instructions || '';
+      document.getElementById('study-slug').value = study.slug;
+      document.getElementById('slug-preview').textContent = study.slug;
+
+      if (study.settings) {
+        document.getElementById('setting-name').checked = study.settings.collectName !== false;
+        document.getElementById('setting-email').checked = !!study.settings.collectEmail;
+        document.getElementById('setting-progress').checked = study.settings.showProgress !== false;
+        document.getElementById('setting-back').checked = study.settings.allowBack !== false;
+        document.getElementById('setting-random').checked = !!study.settings.randomizeFlows;
+        document.getElementById('setting-anon').checked = !!study.settings.allowAnonymous;
+      }
+
+      if (study.status === 'published') {
+        showPublishPanel(study);
+      }
+
+      renderFlows();
+      document.getElementById('save-status').textContent = study.status === 'published' ? 'Published' : 'Draft';
+    }
+
+    function setupSlugSync() {
+      const nameInput = document.getElementById('study-name');
+      const slugInput = document.getElementById('study-slug');
+
+      nameInput.addEventListener('input', () => {
+        if (!editMode || !slugInput.value) {
+          const slug = DTH.slugify(nameInput.value);
+          slugInput.value = slug;
+          document.getElementById('slug-preview').textContent = slug || 'your-slug';
+        }
+      });
+
+      slugInput.addEventListener('input', () => {
+        document.getElementById('slug-preview').textContent = slugInput.value || 'your-slug';
+      });
+    }
+
+    // ===== DIRTY TRACKING =====
+    function markDirty() {
+      isDirty = true;
+      document.getElementById('unsaved-banner').classList.remove('hidden');
+      document.getElementById('save-status').textContent = 'Unsaved changes';
+    }
+
+    function markClean() {
+      isDirty = false;
+      document.getElementById('unsaved-banner').classList.add('hidden');
+    }
+
+    // ===== GET STUDY DATA FROM FORM =====
+    function getStudyData() {
+      return {
+        name: document.getElementById('study-name').value.trim(),
+        description: document.getElementById('study-desc').value.trim(),
+        instructions: document.getElementById('study-instructions').value.trim(),
+        slug: document.getElementById('study-slug').value.trim() || DTH.slugify(document.getElementById('study-name').value),
+        settings: {
+          collectName: document.getElementById('setting-name').checked,
+          collectEmail: document.getElementById('setting-email').checked,
+          showProgress: document.getElementById('setting-progress').checked,
+          allowBack: document.getElementById('setting-back').checked,
+          randomizeFlows: document.getElementById('setting-random').checked,
+          allowAnonymous: document.getElementById('setting-anon').checked,
+        }
+      };
+    }
+
+    // ===== SAVE =====
+    function saveStudy() {
+      const data = getStudyData();
+      if (!data.name) {
+        UI.toast('Please enter a study name', 'error');
+        document.getElementById('study-name').focus();
+        return false;
+      }
+
+      if (studyId) {
+        DTH.Studies.update(studyId, {
+          name: data.name,
+          description: data.description,
+          instructions: data.instructions,
+          slug: data.slug,
+          settings: data.settings
+        });
+      } else {
+        const study = DTH.Studies.create(data);
+        studyId = study.id;
+        editMode = true;
+        // Update URL
+        window.history.replaceState({}, '', 'edit.html?id=' + studyId);
+      }
+
+      markClean();
+      document.getElementById('save-status').textContent = 'Saved';
+      UI.toast('Study saved', 'success');
+      return true;
+    }
+
+    // ===== PUBLISH =====
+    async function publishStudy() {
+      if (!saveStudy()) return;
+
+      const study = DTH.Studies.getById(studyId);
+      const flows = study.flows || [];
+
+      if (flows.length === 0) {
+        UI.toast('Add at least one flow before publishing', 'error');
+        return;
+      }
+
+      DTH.Studies.publish(studyId);
+      const published = DTH.Studies.getById(studyId);
+      showPublishPanel(published);
+      document.getElementById('save-status').textContent = 'Published';
+      UI.toast('Study published! Link is ready to share.', 'success', 5000);
+    }
+
+    function showPublishPanel(study) {
+      const panel = document.getElementById('publish-panel');
+      panel.style.display = 'block';
+      // Build tester URL using the universal study-intro router
+      const base = window.location.href.replace(/\/admin\/.*/, '');
+      const url = base + '/test/study-intro.html?slug=' + study.slug;
+      document.getElementById('tester-link-url').value = url;
+    }
+
+    async function copyTesterLink() {
+      const url = document.getElementById('tester-link-url').value;
+      await UI.copyToClipboard(url);
+      UI.toast('Link copied to clipboard!', 'success');
+    }
+
+    function openTesterLink() {
+      const url = document.getElementById('tester-link-url').value;
+      window.open(url, '_blank');
+    }
+
+    function viewResults() {
+      const study = DTH.Studies.getById(studyId);
+      if (study) window.location.href = '../results/results-template.html?slug=' + study.slug;
+    }
+
+    // ===== FLOW BUILDER =====
+    function getFlows() {
+      if (!studyId) return [];
+      const study = DTH.Studies.getById(studyId);
+      return (study && study.flows) ? study.flows.sort((a, b) => a.display_order - b.display_order) : [];
+    }
+
+    function renderFlows() {
+      const flows = getFlows();
+      const list = document.getElementById('flow-list');
+      const addArea = document.getElementById('add-flow-area');
+      const badge = document.getElementById('flow-count-badge');
+
+      badge.textContent = `${flows.length} / 10`;
+
+      if (flows.length >= 10) {
+        addArea.classList.add('disabled');
+        addArea.innerHTML = '<span>Maximum 10 flows reached</span>';
+      } else {
+        addArea.classList.remove('disabled');
+        addArea.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">add</span><span>Add Flow</span>';
+      }
+
+      list.innerHTML = flows.map((flow, idx) => renderFlowCard(flow, idx + 1, flows.length)).join('');
+
+      // Attach event listeners
+      list.querySelectorAll('.flow-card-header').forEach(header => {
+        header.addEventListener('click', () => {
+          const card = header.closest('.flow-card');
+          card.classList.toggle('expanded');
+        });
+      });
+
+      renderSidebarSections(flows);
+    }
+
+    function renderSidebarSections(flows) {
+      const list = document.getElementById('sidebar-sections-list');
+      if (!list) return;
+      list.innerHTML = flows.map((flow, idx) => `
+        <button class="sidebar-flow-item" onclick="jumpToFlow('${flow.id}')" title="${escHtml(flow.name || 'Untitled Flow')}">
+          <span class="sidebar-flow-icon"><span class="material-symbols-outlined icon-xs" aria-hidden="true">repeat</span></span>
+          <span class="sidebar-flow-label">${idx + 1}. ${escHtml(flow.name || 'Untitled Flow')}</span>
+        </button>
+      `).join('');
+    }
+
+    function jumpToSection(id) {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function jumpToFlow(flowId) {
+      const card = document.getElementById('flow-card-' + flowId);
+      if (!card) return;
+      card.classList.add('expanded');
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function renderFlowCard(flow, num, total) {
+      const questions = flow.questions || [];
+      return `
+        <div class="flow-card expanded" id="flow-card-${flow.id}">
+          <div class="flow-card-header">
+            <div class="flow-number">${num}</div>
+            <div style="flex:1">
+              <div class="flow-card-title">${flow.name || 'Untitled Flow'}</div>
+              <div class="flow-card-subtitle">${questions.length} question${questions.length !== 1 ? 's' : ''}${flow.figma_url ? ' · Figma linked' : ' · No Figma URL'}</div>
+            </div>
+            <span class="material-symbols-outlined flow-expand-icon" aria-hidden="true">expand_more</span>
+          </div>
+
+          <div class="flow-card-body" style="display:flex">
+            <!-- Flow details -->
+            <div class="form-group">
+              <label class="form-label">Flow Name</label>
+              <input type="text" class="form-input flow-name-input" value="${escHtml(flow.name)}" placeholder="e.g. Home Screen - Version A" data-flow="${flow.id}" onchange="updateFlowField('${flow.id}','name',this.value)">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Description</label>
+              <input type="text" class="form-input" value="${escHtml(flow.description || '')}" placeholder="Brief description..." data-flow="${flow.id}" onchange="updateFlowField('${flow.id}','description',this.value)">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Figma Prototype URL</label>
+              <div style="display:flex;gap:8px">
+                <input type="url" class="form-input" value="${escHtml(flow.figma_url || '')}" placeholder="https://www.figma.com/proto/..." data-flow="${flow.id}" onchange="updateFlowField('${flow.id}','figma_url',this.value)" style="flex:1">
+                ${flow.figma_url ? `<a href="${escHtml(flow.figma_url)}" target="_blank" class="btn btn-secondary btn-sm" title="Preview">Preview <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_new</span></a>` : ''}
+              </div>
+              <span class="form-hint">Paste your Figma prototype share link</span>
+            </div>
+
+            <!-- Questions -->
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <div style="font-size:0.8125rem;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.06em">
+                  Questions (${questions.length})
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="openQuestionEditor('${flow.id}')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">add</span> Add Question</button>
+              </div>
+              <div class="question-list-admin" id="q-list-${flow.id}">
+                ${questions.length === 0 ? `
+                  <div style="text-align:center;padding:24px;color:var(--text-muted);font-size:0.875rem;background:var(--bg-surface);border-radius:var(--radius-md);border:1px dashed var(--border-subtle)">
+                    No questions yet. Add a question to collect feedback.
+                  </div>
+                ` : questions.sort((a,b) => a.display_order - b.display_order).map((q, qi) => `
+                  <div class="q-admin-card" id="q-admin-${q.id}">
+                    <div class="question-number">${qi + 1}</div>
+                    <div class="q-admin-info">
+                      <div class="q-admin-text">${escHtml(q.question_text) || 'Untitled question'}</div>
+                      <div class="q-admin-meta">
+                        <span>${UI.questionTypeLabel(q.question_type)}</span>
+                        ${q.required ? '<span style="color:var(--text-danger)">Required</span>' : '<span>Optional</span>'}
+                        ${q.options && q.options.length ? `<span>${q.options.length} options</span>` : ''}
+                      </div>
+                    </div>
+                    <div class="q-admin-actions">
+                      <button class="btn btn-ghost btn-icon" title="Edit" onclick="openQuestionEditor('${flow.id}','${q.id}')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">edit</span></button>
+                      <button class="btn btn-ghost btn-icon" title="Duplicate" onclick="duplicateQuestion('${flow.id}','${q.id}')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">content_copy</span></button>
+                      <button class="btn btn-ghost btn-icon" title="Delete" style="color:var(--text-muted)" onclick="deleteQuestion('${flow.id}','${q.id}')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">delete</span></button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+              ${questions.length > 0 ? `<button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%" onclick="openQuestionEditor('${flow.id}')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">add</span> Add Another Question</button>` : ''}
+            </div>
+          </div>
+
+          <div class="flow-card-actions">
+            <button class="btn btn-secondary btn-sm" onclick="duplicateFlow('${flow.id}')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">content_copy</span> Duplicate Flow</button>
+            ${num > 1 ? `<button class="btn btn-ghost btn-sm" onclick="moveFlow('${flow.id}',-1)"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_upward</span> Move Up</button>` : ''}
+            ${num < total ? `<button class="btn btn-ghost btn-sm" onclick="moveFlow('${flow.id}',1)"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_downward</span> Move Down</button>` : ''}
+            <button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="deleteFlow('${flow.id}')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">delete</span> Delete Flow</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function escHtml(str) {
+      return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    function ensureStudyExists() {
+      if (!studyId) {
+        const data = getStudyData();
+        if (!data.name) {
+          UI.toast('Please enter a study name first', 'error');
+          document.getElementById('study-name').focus();
+          return false;
+        }
+        const study = DTH.Studies.create(data);
+        studyId = study.id;
+        editMode = true;
+        window.history.replaceState({}, '', 'edit.html?id=' + studyId);
+        document.getElementById('page-title-text').textContent = 'Edit Study';
+      }
+      return true;
+    }
+
+    function addFlow() {
+      if (!ensureStudyExists()) return;
+      const study = DTH.Studies.getById(studyId);
+      if ((study.flows || []).length >= 10) {
+        UI.toast('Maximum 10 flows reached', 'error');
+        return;
+      }
+      const flow = DTH.Studies.addFlow(studyId, { name: 'Untitled Flow', description: '' });
+      markDirty();
+      renderFlows();
+      // Auto scroll to new flow
+      setTimeout(() => {
+        const el = document.getElementById('flow-card-' + flow.id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
+    }
+
+    function updateFlowField(flowId, field, value) {
+      if (!studyId) return;
+      const update = {};
+      update[field] = value;
+      DTH.Studies.updateFlow(studyId, flowId, update);
+      markDirty();
+      // Re-render just the badge/subtitle
+      const study = DTH.Studies.getById(studyId);
+      const flow = (study.flows || []).find(f => f.id === flowId);
+      if (flow) {
+        const card = document.getElementById('flow-card-' + flowId);
+        if (card) {
+          const title = card.querySelector('.flow-card-title');
+          if (title) title.textContent = flow.name || 'Untitled Flow';
+        }
+      }
+    }
+
+    async function duplicateFlow(flowId) {
+      if (!studyId) return;
+      const study = DTH.Studies.getById(studyId);
+      if ((study.flows || []).length >= 10) {
+        UI.toast('Maximum 10 flows reached', 'error');
+        return;
+      }
+      DTH.Studies.duplicateFlow(studyId, flowId);
+      renderFlows();
+      markDirty();
+      UI.toast('Flow duplicated', 'success');
+    }
+
+    async function deleteFlow(flowId) {
+      const ok = await UI.confirm('Delete this flow? All questions in it will also be removed.', {
+        title: 'Delete Flow', confirmText: 'Delete', danger: true
+      });
+      if (ok) {
+        DTH.Studies.deleteFlow(studyId, flowId);
+        renderFlows();
+        markDirty();
+        UI.toast('Flow deleted', 'info');
+      }
+    }
+
+    function moveFlow(flowId, direction) {
+      const study = DTH.Studies.getById(studyId);
+      const flows = (study.flows || []).sort((a,b) => a.display_order - b.display_order);
+      const idx = flows.findIndex(f => f.id === flowId);
+      const newIdx = idx + direction;
+      if (newIdx < 0 || newIdx >= flows.length) return;
+
+      // Swap display orders
+      const temp = flows[idx].display_order;
+      flows[idx].display_order = flows[newIdx].display_order;
+      flows[newIdx].display_order = temp;
+
+      DTH.Studies.update(studyId, { flows });
+      renderFlows();
+      markDirty();
+    }
+
+    // ===== QUESTION EDITOR =====
+    function openQuestionEditor(flowId, questionId = null) {
+      if (!ensureStudyExists()) return;
+
+      const study = DTH.Studies.getById(studyId);
+      const flow = (study.flows || []).find(f => f.id === flowId);
+      if (!flow) return;
+
+      let existing = null;
+      if (questionId) {
+        existing = (flow.questions || []).find(q => q.id === questionId);
+      }
+
+      const typeOptions = UI.QUESTION_TYPES.map(t => `
+        <option value="${t.value}" ${existing && existing.question_type === t.value ? 'selected' : ''}>${t.label}</option>
+      `).join('');
+
+      const hasOptions = existing && (existing.question_type === 'single_choice' || existing.question_type === 'multiple_choice');
+      const optionsHtml = hasOptions ? renderOptionsEditor(existing.options || []) : '';
+
+      const m = UI.modal({
+        title: questionId ? 'Edit Question' : 'Add Question',
+        size: 'lg',
+        body: `
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="form-group">
+              <label class="form-label">Question Text <span class="required">*</span></label>
+              <textarea id="q-text" class="form-textarea" rows="2" placeholder="How would you rate this design?">${existing ? escHtml(existing.question_text) : ''}</textarea>
+            </div>
+            <div class="grid-2" style="gap:16px">
+              <div class="form-group">
+                <label class="form-label">Question Type</label>
+                <select id="q-type" class="form-select" onchange="onQTypeChange()">
+                  ${typeOptions}
+                </select>
+              </div>
+              <div class="form-group" style="justify-content:flex-end;padding-top:4px">
+                <label class="toggle-wrapper" for="q-required" style="margin-top:20px">
+                  <div class="toggle"><input type="checkbox" id="q-required" ${!existing || existing.required ? 'checked' : ''}><div class="toggle-track"></div></div>
+                  <span class="toggle-label">Required</span>
+                </label>
+              </div>
+            </div>
+            <div id="options-section" style="${hasOptions ? '' : 'display:none'}">
+              <label class="form-label" style="margin-bottom:8px">Answer Options</label>
+              <div class="options-list" id="options-list">
+                ${optionsHtml}
+              </div>
+              <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addOption()"><span class="material-symbols-outlined icon-sm" aria-hidden="true">add</span> Add Option</button>
+            </div>
+          </div>
+        `,
+        footer: `
+          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove();document.body.style.overflow=''">Cancel</button>
+          <button class="btn btn-primary" onclick="saveQuestion('${flowId}','${questionId || ''}')">
+            ${questionId ? 'Update Question' : 'Add Question'}
+          </button>
+        `
+      });
+
+      // Init type check
+      setTimeout(onQTypeChange, 50);
+    }
+
+    function renderOptionsEditor(options) {
+      return (options.length ? options : ['', '']).map((opt, i) => `
+        <div class="option-row">
+          <input type="text" class="form-input option-input" value="${escHtml(opt)}" placeholder="Option ${i + 1}">
+          <button class="option-remove" onclick="removeOption(this)" title="Remove"><span class="material-symbols-outlined icon-sm" aria-hidden="true">close</span></button>
+        </div>
+      `).join('');
+    }
+
+    function onQTypeChange() {
+      const type = document.getElementById('q-type')?.value;
+      const section = document.getElementById('options-section');
+      if (!section) return;
+
+      if (type === 'single_choice' || type === 'multiple_choice') {
+        section.style.display = '';
+        if (document.getElementById('options-list').children.length === 0) {
+          addOption(); addOption();
+        }
+      } else {
+        section.style.display = 'none';
+      }
+    }
+
+    function addOption() {
+      const list = document.getElementById('options-list');
+      const row = document.createElement('div');
+      row.className = 'option-row';
+      const count = list.children.length + 1;
+      row.innerHTML = `
+        <input type="text" class="form-input option-input" placeholder="Option ${count}">
+        <button class="option-remove" onclick="removeOption(this)" title="Remove"><span class="material-symbols-outlined icon-sm" aria-hidden="true">close</span></button>
+      `;
+      list.appendChild(row);
+      row.querySelector('input').focus();
+    }
+
+    function removeOption(btn) {
+      const row = btn.closest('.option-row');
+      if (document.querySelectorAll('.option-row').length <= 2) {
+        UI.toast('Minimum 2 options required', 'error');
+        return;
+      }
+      row.remove();
+    }
+
+    function saveQuestion(flowId, questionId) {
+      const text = document.getElementById('q-text')?.value.trim();
+      const type = document.getElementById('q-type')?.value;
+      const required = document.getElementById('q-required')?.checked;
+
+      if (!text) { UI.toast('Please enter a question', 'error'); return; }
+
+      let options = [];
+      if (type === 'single_choice' || type === 'multiple_choice') {
+        options = [...document.querySelectorAll('.option-input')]
+          .map(i => i.value.trim())
+          .filter(Boolean);
+        if (options.length < 2) { UI.toast('Add at least 2 options', 'error'); return; }
+      }
+
+      if (questionId) {
+        DTH.Studies.updateQuestion(studyId, flowId, questionId, { question_text: text, question_type: type, options, required });
+        UI.toast('Question updated', 'success');
+      } else {
+        DTH.Studies.addQuestion(studyId, flowId, { question_text: text, question_type: type, options, required });
+        UI.toast('Question added', 'success');
+      }
+
+      // Close modal
+      document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
+      document.body.style.overflow = '';
+
+      renderFlows();
+      markDirty();
+    }
+
+    async function duplicateQuestion(flowId, questionId) {
+      DTH.Studies.duplicateQuestion(studyId, flowId, questionId);
+      renderFlows();
+      markDirty();
+      UI.toast('Question duplicated', 'success');
+    }
+
+    async function deleteQuestion(flowId, questionId) {
+      const ok = await UI.confirm('Delete this question?', { title: 'Delete Question', confirmText: 'Delete', danger: true });
+      if (ok) {
+        DTH.Studies.deleteQuestion(studyId, flowId, questionId);
+        renderFlows();
+        markDirty();
+        UI.toast('Question deleted', 'info');
+      }
+    }
+
+    // Warn before leaving with unsaved changes
+    window.addEventListener('beforeunload', e => {
+      if (isDirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    init();
+  </script>
+</body>
+</html>

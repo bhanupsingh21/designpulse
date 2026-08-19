@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Login · Flowlytics</title>
+  <meta name="description" content="Sign in to Flowlytics admin dashboard">
+  <link rel="stylesheet" href="../css/globals.css">
+  <style>
+    .login-hero-text {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+    .login-divider {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      margin: 16px 0;
+      position: relative;
+    }
+    .login-divider::before, .login-divider::after {
+      content: '';
+      position: absolute;
+      top: 50%; width: calc(50% - 24px);
+      height: 1px; background: var(--border-subtle);
+    }
+    .login-divider::before { left: 0; }
+    .login-divider::after { right: 0; }
+    .demo-hint {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+    }
+    .demo-hint strong { color: var(--text-primary); }
+  </style>
+</head>
+<body>
+  <div id="toast-container"></div>
+
+  <div class="login-page">
+    <div class="login-card">
+      <div style="text-align:center; margin-bottom:32px">
+        <div style="display:inline-flex;align-items:center;margin-bottom:12px">
+          <img src="../flowlytics.svg" alt="Flowlytics" style="width:160px;height:auto">
+        </div>
+        <h1 style="font-size:1.5rem;margin-bottom:6px">Welcome back</h1>
+        <p class="login-hero-text">Sign in to your admin dashboard</p>
+      </div>
+
+      <div class="demo-hint">
+        <strong>Demo credentials:</strong><br>
+        Email: <strong>admin@designhub.com</strong><br>
+        Password: <strong>design2026</strong>
+      </div>
+
+      <form id="login-form">
+        <div class="flex-col gap-16" style="gap:16px;display:flex;flex-direction:column">
+          <div class="form-group">
+            <label class="form-label" for="email">Email address</label>
+            <input id="email" type="email" class="form-input" placeholder="admin@company.com" value="admin@designhub.com" required autocomplete="email">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="password">Password</label>
+            <input id="password" type="password" class="form-input" placeholder="Enter password" required autocomplete="current-password">
+          </div>
+
+          <button type="submit" class="btn btn-primary w-full" id="login-btn" style="width:100%;margin-top:4px;padding:12px 18px;font-size:0.9375rem">
+            Sign In
+            <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+          </button>
+        </div>
+      </form>
+
+      <p style="text-align:center;font-size:0.8rem;color:var(--text-muted);margin-top:24px">
+        Flowlytics · Internal UX Testing Platform
+      </p>
+    </div>
+  </div>
+
+  <script src="../js/store.js"></script>
+  <script src="../js/ui.js"></script>
+  <script>
+    // Auto redirect if already logged in
+    if (DTH.Auth.isLoggedIn()) {
+      window.location.href = 'index.html';
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('login-btn');
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> Signing in...';
+
+      // Simulate network delay
+      await new Promise(r => setTimeout(r, 600));
+
+      const success = DTH.Auth.login(email, password);
+      if (success) {
+        UI.toast('Welcome back! Loading dashboard...', 'success');
+        setTimeout(() => { window.location.href = 'index.html'; }, 800);
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = 'Sign In <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>';
+        document.getElementById('password').classList.add('error');
+        UI.toast('Invalid credentials. Try password: design2026', 'error', 5000);
+      }
+    });
+
+    document.getElementById('password').addEventListener('input', () => {
+      document.getElementById('password').classList.remove('error');
+    });
+  </script>
+</body>
+</html>
