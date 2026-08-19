@@ -1,27 +1,36 @@
-// ===== FLOWLYTICS - DATA STORE (localStorage + Supabase-ready) =====
-// This module manages all data. It uses localStorage for offline/demo mode.
-// Replace the localStorage calls with Supabase API calls when ready.
+// ===== FLOWLYTICS - DATA STORE (Supabase-backed) =====
+// Every function here talks to a real Supabase project over its REST + Auth
+// APIs. All Studies/Sessions/Answers/FlowSubmissions/Analytics functions are
+// async now (they return Promises) - callers must use await/.then().
 
 const DTH = (() => {
   'use strict';
 
-  // ===== KEYS =====
-  const KEYS = {
-    STUDIES: 'dth_studies',
-    SESSIONS: 'dth_sessions',
-    ANSWERS: 'dth_answers',
-    FLOW_SUBMISSIONS: 'dth_flow_submissions',
-    ADMIN_AUTH: 'dth_admin',
-    CURRENT_SESSION: 'dth_current_session',
+  const SUPABASE_URL = 'https://rzantaponolgzelerjss.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_zLZV_tyKwoATgutTNVkkow_I3PfsL9g';
+  const REST = SUPABASE_URL + '/rest/v1';
+  const AUTH = SUPABASE_URL + '/auth/v1';
+
+  const LOCAL_KEYS = {
+    ADMIN_SESSION: 'dth_admin_session',
+    CURRENT_SESSION: 'dth_current_session'
   };
 
-  // ===== UTILS =====
-  function uid() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  // ===== LOCAL (per-device) STORAGE HELPERS =====
+  // Only used for: the admin's own login token, and "which test session is
+  // this browser currently on" - both are legitimately per-device state, not
+  // shared study/tester data.
+  function loadLocal(key, def) {
+    try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(def)); }
+    catch { return def; }
+  }
+  function saveLocal(key, data) {
+    if (data === null || data === undefined) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(data));
   }
 
   function slugify(text) {
-    return text.toLowerCase()
+    return String(text || '').toLowerCase()
       .replace(/[^a-z0-9\s-]/g, '')
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
@@ -30,58 +39,119 @@ const DTH = (() => {
 
   function now() { return new Date().toISOString(); }
 
-  function load(key, def = []) {
-    try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(def)); }
-    catch { return def; }
-  }
+  // ===== REST REQUEST HELPER =====
+  async function request(path, options = {}) {
+    const session = loadLocal(LOCAL_KEYS.ADMIN_SESSION, null);
+    const token = (session && session.access_token) ? session.access_token : SUPABASE_KEY;
 
-  function save(key, data) {
-    localStorage.setItem(key, JSON.stringify(data));
-  }
-
-  // ===== ADMIN AUTH =====
-  const Auth = {
-    ADMIN_PASSWORD: 'design2026', // Simple demo password
-
-    login(email, password) {
-      if (password === this.ADMIN_PASSWORD) {
-        save(KEYS.ADMIN_AUTH, { email, loggedIn: true, at: now() });
-        return true;
+    const res = await fetch(REST + path, {
+      ...options,
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
       }
-      return false;
+    });
+
+    if (res.status === 401 && session) {
+      // Admin token expired/invalid - drop the local session so isLoggedIn() reflects reality
+      saveLocal(LOCAL_KEYS.ADMIN_SESSION, null);
+    }
+
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.json()).message || ''; } catch { /* ignore */ }
+      throw new Error('Request failed (' + res.status + ')' + (detail ? ': ' + detail : ''));
+    }
+
+    if (res.status === 204) return null;
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  // ===== ADMIN AUTH (real Supabase Auth) =====
+  const Auth = {
+    async login(email, password) {
+      const res = await fetch(AUTH + '/token?grant_type=password', {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.access_token) return false;
+      saveLocal(LOCAL_KEYS.ADMIN_SESSION, {
+        access_token: data.access_token,
+        email: (data.user && data.user.email) || email
+      });
+      return true;
     },
 
-    logout() { localStorage.removeItem(KEYS.ADMIN_AUTH); },
+    logout() {
+      const session = loadLocal(LOCAL_KEYS.ADMIN_SESSION, null);
+      saveLocal(LOCAL_KEYS.ADMIN_SESSION, null);
+      if (session && session.access_token) {
+        fetch(AUTH + '/logout', {
+          method: 'POST',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + session.access_token }
+        }).catch(() => {});
+      }
+    },
 
     isLoggedIn() {
-      const a = load(KEYS.ADMIN_AUTH, null);
-      return a && a.loggedIn === true;
+      const session = loadLocal(LOCAL_KEYS.ADMIN_SESSION, null);
+      return !!(session && session.access_token);
     },
 
-    getAdmin() { return load(KEYS.ADMIN_AUTH, null); }
+    getAdmin() {
+      const session = loadLocal(LOCAL_KEYS.ADMIN_SESSION, null);
+      return session ? { email: session.email } : null;
+    }
   };
 
-  // ===== STUDIES =====
+  // ===== STUDIES (+ nested flows + questions via PostgREST embedding) =====
+  const STUDY_SELECT = '*,flows(*,questions(*))';
+
+  function normalizeStudy(row) {
+    if (!row) return null;
+    const flows = (row.flows || [])
+      .slice()
+      .sort((a, b) => a.display_order - b.display_order)
+      .map(f => ({
+        ...f,
+        questions: (f.questions || []).slice().sort((a, b) => a.display_order - b.display_order)
+      }));
+    return { ...row, flows };
+  }
+
   const Studies = {
-    getAll() { return load(KEYS.STUDIES, []); },
-
-    getBySlug(slug) {
-      return this.getAll().find(s => s.slug === slug) || null;
+    async getAll() {
+      const rows = await request('/studies?select=' + STUDY_SELECT + '&order=created_at.desc');
+      return (rows || []).map(normalizeStudy);
     },
 
-    getById(id) {
-      return this.getAll().find(s => s.id === id) || null;
+    async getBySlug(slug) {
+      const rows = await request('/studies?slug=eq.' + encodeURIComponent(slug) + '&select=' + STUDY_SELECT);
+      return rows && rows[0] ? normalizeStudy(rows[0]) : null;
     },
 
-    create({ name, description, instructions, settings }) {
-      const studies = this.getAll();
+    async getById(id) {
+      const rows = await request('/studies?id=eq.' + encodeURIComponent(id) + '&select=' + STUDY_SELECT);
+      return rows && rows[0] ? normalizeStudy(rows[0]) : null;
+    },
+
+    async create({ name, description, instructions, settings }) {
       let slug = slugify(name);
-      // ensure unique slug
       let count = 1;
-      while (studies.find(s => s.slug === slug)) { slug = slugify(name) + '-' + count++; }
+      // ensure unique slug
+      // eslint-disable-next-line no-await-in-loop
+      while (true) {
+        const existing = await request('/studies?slug=eq.' + encodeURIComponent(slug) + '&select=id');
+        if (!existing || existing.length === 0) break;
+        slug = slugify(name) + '-' + (count++);
+      }
 
-      const study = {
-        id: uid(),
+      const body = {
         name,
         slug,
         description: description || '',
@@ -95,347 +165,336 @@ const DTH = (() => {
           showProgress: true,
           allowBack: true,
           saveProgress: true,
-          ...settings
-        },
-        created_at: now(),
-        updated_at: now(),
-        flows: []
+          ...(settings || {})
+        }
       };
-      studies.push(study);
-      save(KEYS.STUDIES, studies);
-      return study;
+
+      const rows = await request('/studies', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(body)
+      });
+      return { ...rows[0], flows: [] };
     },
 
-    update(id, updates) {
-      const studies = this.getAll();
-      const idx = studies.findIndex(s => s.id === id);
-      if (idx === -1) return null;
-      studies[idx] = { ...studies[idx], ...updates, updated_at: now() };
-      save(KEYS.STUDIES, studies);
-      return studies[idx];
+    async update(id, updates) {
+      const body = { ...updates, updated_at: now() };
+      delete body.flows; // flows live in their own table now, never patched via studies
+      const rows = await request('/studies?id=eq.' + encodeURIComponent(id), {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(body)
+      });
+      return rows && rows[0] ? rows[0] : null;
     },
 
-    delete(id) {
-      const studies = this.getAll().filter(s => s.id !== id);
-      save(KEYS.STUDIES, studies);
+    async delete(id) {
+      await request('/studies?id=eq.' + encodeURIComponent(id), { method: 'DELETE' });
     },
 
     publish(id) { return this.update(id, { status: 'published' }); },
     close(id)   { return this.update(id, { status: 'closed' }); },
     unpublish(id) { return this.update(id, { status: 'draft' }); },
 
-    // ===== FLOWS within study =====
-    addFlow(studyId, flowData) {
-      const study = this.getById(studyId);
-      if (!study) return null;
-      if ((study.flows || []).length >= 10) return null;
+    // ===== FLOWS =====
+    async addFlow(studyId, flowData) {
+      const existing = await request('/flows?study_id=eq.' + encodeURIComponent(studyId) + '&select=id');
+      if (existing && existing.length >= 10) return null;
 
-      const flow = {
-        id: uid(),
+      const body = {
+        study_id: studyId,
         name: flowData.name || 'Untitled Flow',
         description: flowData.description || '',
         figma_url: flowData.figma_url || '',
-        display_order: (study.flows || []).length + 1,
-        questions: flowData.questions || [],
-        created_at: now(),
-        updated_at: now()
+        display_order: (existing ? existing.length : 0) + 1
       };
-
-      const flows = [...(study.flows || []), flow];
-      this.update(studyId, { flows });
-      return flow;
+      const rows = await request('/flows', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(body)
+      });
+      return { ...rows[0], questions: [] };
     },
 
-    updateFlow(studyId, flowId, updates) {
-      const study = this.getById(studyId);
-      if (!study) return null;
-      const flows = (study.flows || []).map(f =>
-        f.id === flowId ? { ...f, ...updates, updated_at: now() } : f
-      );
-      this.update(studyId, { flows });
-      return flows.find(f => f.id === flowId);
+    async updateFlow(studyId, flowId, updates) {
+      const body = { ...updates, updated_at: now() };
+      delete body.questions; // questions live in their own table
+      const rows = await request('/flows?id=eq.' + encodeURIComponent(flowId), {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(body)
+      });
+      return rows && rows[0] ? rows[0] : null;
     },
 
-    deleteFlow(studyId, flowId) {
-      const study = this.getById(studyId);
-      if (!study) return;
-      const flows = (study.flows || [])
-        .filter(f => f.id !== flowId)
-        .map((f, i) => ({ ...f, display_order: i + 1 }));
-      this.update(studyId, { flows });
+    async deleteFlow(studyId, flowId) {
+      await request('/flows?id=eq.' + encodeURIComponent(flowId), { method: 'DELETE' });
+      const remaining = await request('/flows?study_id=eq.' + encodeURIComponent(studyId) + '&select=id&order=display_order.asc');
+      await Promise.all((remaining || []).map((f, i) =>
+        request('/flows?id=eq.' + encodeURIComponent(f.id), {
+          method: 'PATCH',
+          body: JSON.stringify({ display_order: i + 1 })
+        })
+      ));
     },
 
-    duplicateFlow(studyId, flowId) {
-      const study = this.getById(studyId);
-      if (!study) return null;
-      const flow = (study.flows || []).find(f => f.id === flowId);
+    async duplicateFlow(studyId, flowId) {
+      const rows = await request('/flows?id=eq.' + encodeURIComponent(flowId) + '&select=*,questions(*)');
+      const flow = rows && rows[0];
       if (!flow) return null;
 
-      const duplicate = {
-        ...flow,
-        id: uid(),
-        name: flow.name + ' (Copy)',
-        display_order: (study.flows || []).length + 1,
-        questions: (flow.questions || []).map(q => ({
-          ...q,
-          id: uid(),
-          options: q.options ? [...q.options] : []
-        })),
-        created_at: now(),
-        updated_at: now()
-      };
+      const existing = await request('/flows?study_id=eq.' + encodeURIComponent(studyId) + '&select=id');
+      const newFlowRows = await request('/flows', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({
+          study_id: studyId,
+          name: (flow.name || 'Untitled Flow') + ' (Copy)',
+          description: flow.description || '',
+          figma_url: flow.figma_url || '',
+          display_order: (existing ? existing.length : 0) + 1
+        })
+      });
+      const newFlow = newFlowRows[0];
 
-      const flows = [...(study.flows || []), duplicate];
-      this.update(studyId, { flows });
-      return duplicate;
+      const questions = flow.questions || [];
+      let newQuestions = [];
+      if (questions.length) {
+        newQuestions = await request('/questions', {
+          method: 'POST',
+          headers: { Prefer: 'return=representation' },
+          body: JSON.stringify(questions.map(q => ({
+            flow_id: newFlow.id,
+            question_text: q.question_text,
+            question_type: q.question_type,
+            options: q.options || [],
+            required: q.required,
+            display_order: q.display_order
+          })))
+        });
+      }
+      return { ...newFlow, questions: newQuestions };
     },
 
-    reorderFlows(studyId, orderedIds) {
-      const study = this.getById(studyId);
-      if (!study) return;
-      const flows = orderedIds.map((id, i) => {
-        const f = study.flows.find(f => f.id === id);
-        return f ? { ...f, display_order: i + 1 } : null;
-      }).filter(Boolean);
-      this.update(studyId, { flows });
+    async moveFlow(studyId, flowId, direction) {
+      const flows = await request('/flows?study_id=eq.' + encodeURIComponent(studyId) + '&select=id,display_order&order=display_order.asc');
+      const idx = flows.findIndex(f => f.id === flowId);
+      const newIdx = idx + direction;
+      if (idx === -1 || newIdx < 0 || newIdx >= flows.length) return;
+
+      const a = flows[idx], b = flows[newIdx];
+      await Promise.all([
+        request('/flows?id=eq.' + encodeURIComponent(a.id), { method: 'PATCH', body: JSON.stringify({ display_order: b.display_order }) }),
+        request('/flows?id=eq.' + encodeURIComponent(b.id), { method: 'PATCH', body: JSON.stringify({ display_order: a.display_order }) })
+      ]);
     },
 
-    // ===== QUESTIONS within flow =====
-    addQuestion(studyId, flowId, qData) {
-      const study = this.getById(studyId);
-      if (!study) return null;
-      const flow = (study.flows || []).find(f => f.id === flowId);
-      if (!flow) return null;
-
-      const question = {
-        id: uid(),
+    // ===== QUESTIONS =====
+    async addQuestion(studyId, flowId, qData) {
+      const existing = await request('/questions?flow_id=eq.' + encodeURIComponent(flowId) + '&select=id');
+      const body = {
+        flow_id: flowId,
         question_text: qData.question_text || '',
         question_type: qData.question_type || 'short_text',
         options: qData.options || [],
         required: qData.required !== undefined ? qData.required : true,
-        display_order: (flow.questions || []).length + 1,
-        created_at: now(),
-        updated_at: now()
+        display_order: (existing ? existing.length : 0) + 1
       };
-
-      const questions = [...(flow.questions || []), question];
-      this.updateFlow(studyId, flowId, { questions });
-      return question;
+      const rows = await request('/questions', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(body)
+      });
+      return rows[0];
     },
 
-    updateQuestion(studyId, flowId, questionId, updates) {
-      const study = this.getById(studyId);
-      if (!study) return null;
-      const flow = (study.flows || []).find(f => f.id === flowId);
-      if (!flow) return null;
-      const questions = (flow.questions || []).map(q =>
-        q.id === questionId ? { ...q, ...updates, updated_at: now() } : q
-      );
-      this.updateFlow(studyId, flowId, { questions });
-      return questions.find(q => q.id === questionId);
+    async updateQuestion(studyId, flowId, questionId, updates) {
+      const body = { ...updates, updated_at: now() };
+      const rows = await request('/questions?id=eq.' + encodeURIComponent(questionId), {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(body)
+      });
+      return rows && rows[0] ? rows[0] : null;
     },
 
-    deleteQuestion(studyId, flowId, questionId) {
-      const study = this.getById(studyId);
-      if (!study) return;
-      const flow = (study.flows || []).find(f => f.id === flowId);
-      if (!flow) return;
-      const questions = (flow.questions || [])
-        .filter(q => q.id !== questionId)
-        .map((q, i) => ({ ...q, display_order: i + 1 }));
-      this.updateFlow(studyId, flowId, { questions });
+    async deleteQuestion(studyId, flowId, questionId) {
+      await request('/questions?id=eq.' + encodeURIComponent(questionId), { method: 'DELETE' });
+      const remaining = await request('/questions?flow_id=eq.' + encodeURIComponent(flowId) + '&select=id&order=display_order.asc');
+      await Promise.all((remaining || []).map((q, i) =>
+        request('/questions?id=eq.' + encodeURIComponent(q.id), {
+          method: 'PATCH',
+          body: JSON.stringify({ display_order: i + 1 })
+        })
+      ));
     },
 
-    duplicateQuestion(studyId, flowId, questionId) {
-      const study = this.getById(studyId);
-      if (!study) return null;
-      const flow = (study.flows || []).find(f => f.id === flowId);
-      if (!flow) return null;
-      const q = (flow.questions || []).find(q => q.id === questionId);
+    async duplicateQuestion(studyId, flowId, questionId) {
+      const rows = await request('/questions?id=eq.' + encodeURIComponent(questionId));
+      const q = rows && rows[0];
       if (!q) return null;
-
-      const duplicate = {
-        ...q,
-        id: uid(),
-        display_order: (flow.questions || []).length + 1,
-        options: q.options ? [...q.options] : [],
-        created_at: now(),
-        updated_at: now()
-      };
-      const questions = [...(flow.questions || []), duplicate];
-      this.updateFlow(studyId, flowId, { questions });
-      return duplicate;
+      const existing = await request('/questions?flow_id=eq.' + encodeURIComponent(flowId) + '&select=id');
+      const newRows = await request('/questions', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({
+          flow_id: flowId,
+          question_text: q.question_text,
+          question_type: q.question_type,
+          options: q.options || [],
+          required: q.required,
+          display_order: (existing ? existing.length : 0) + 1
+        })
+      });
+      return newRows[0];
     }
   };
 
-  // ===== SESSIONS =====
+  // ===== TEST SESSIONS =====
   const Sessions = {
-    getAll() { return load(KEYS.SESSIONS, []); },
+    async getById(id) {
+      const rows = await request('/test_sessions?id=eq.' + encodeURIComponent(id));
+      return rows && rows[0] ? rows[0] : null;
+    },
 
-    getById(id) { return this.getAll().find(s => s.id === id) || null; },
+    async getByStudy(studyId) {
+      return (await request('/test_sessions?study_id=eq.' + encodeURIComponent(studyId))) || [];
+    },
 
-    getByStudy(studyId) { return this.getAll().filter(s => s.study_id === studyId); },
-
-    create({ studyId, testerName, testerEmail }) {
-      const sessions = this.getAll();
-      const session = {
-        id: uid(),
-        session_code: 'TS-' + Math.random().toString(36).toUpperCase().slice(2, 8),
+    async create({ studyId, testerName, testerEmail }) {
+      const body = {
         study_id: studyId,
         tester_name: testerName || 'Anonymous',
         tester_email: testerEmail || '',
-        started_at: now(),
-        completed_at: null,
         status: 'in_progress',
-        current_flow: 0,
-        created_at: now()
+        current_flow: 0
       };
-      sessions.push(session);
-      save(KEYS.SESSIONS, sessions);
-      return session;
+      const rows = await request('/test_sessions', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(body)
+      });
+      return rows[0];
     },
 
-    update(id, updates) {
-      const sessions = this.getAll();
-      const idx = sessions.findIndex(s => s.id === id);
-      if (idx === -1) return null;
-      sessions[idx] = { ...sessions[idx], ...updates };
-      save(KEYS.SESSIONS, sessions);
-      return sessions[idx];
+    async update(id, updates) {
+      const rows = await request('/test_sessions?id=eq.' + encodeURIComponent(id), {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(updates)
+      });
+      return rows && rows[0] ? rows[0] : null;
     },
 
     complete(id) {
       return this.update(id, { status: 'completed', completed_at: now() });
     },
 
-    getCurrentSession(studyId) {
-      const stored = load(KEYS.CURRENT_SESSION, {});
+    // ===== per-device "which session am I on" tracking (kept local) =====
+    async getCurrentSession(studyId) {
+      const stored = loadLocal(LOCAL_KEYS.CURRENT_SESSION, {});
       const sessionId = stored[studyId];
       if (!sessionId) return null;
-      const session = this.getById(sessionId);
+      const session = await this.getById(sessionId);
       if (!session || session.status === 'completed') return null;
       return session;
     },
 
     setCurrentSession(studyId, sessionId) {
-      const stored = load(KEYS.CURRENT_SESSION, {});
+      const stored = loadLocal(LOCAL_KEYS.CURRENT_SESSION, {});
       stored[studyId] = sessionId;
-      save(KEYS.CURRENT_SESSION, stored);
+      saveLocal(LOCAL_KEYS.CURRENT_SESSION, stored);
     },
 
     clearCurrentSession(studyId) {
-      const stored = load(KEYS.CURRENT_SESSION, {});
+      const stored = loadLocal(LOCAL_KEYS.CURRENT_SESSION, {});
       delete stored[studyId];
-      save(KEYS.CURRENT_SESSION, stored);
+      saveLocal(LOCAL_KEYS.CURRENT_SESSION, stored);
     }
   };
 
   // ===== ANSWERS =====
   const Answers = {
-    getAll() { return load(KEYS.ANSWERS, []); },
-
-    getBySession(sessionId) { return this.getAll().filter(a => a.session_id === sessionId); },
-
-    getByFlowSession(flowId, sessionId) {
-      return this.getAll().filter(a => a.flow_id === flowId && a.session_id === sessionId);
+    async getBySession(sessionId) {
+      return (await request('/answers?session_id=eq.' + encodeURIComponent(sessionId))) || [];
     },
 
-    upsert({ sessionId, studyId, flowId, questionId, answerText, answerJson }) {
-      const answers = this.getAll();
-      const existing = answers.findIndex(
-        a => a.session_id === sessionId && a.question_id === questionId
-      );
+    async getByFlowSession(flowId, sessionId) {
+      return (await request(
+        '/answers?flow_id=eq.' + encodeURIComponent(flowId) + '&session_id=eq.' + encodeURIComponent(sessionId)
+      )) || [];
+    },
 
-      const answer = {
-        id: existing >= 0 ? answers[existing].id : uid(),
+    async upsert({ sessionId, studyId, flowId, questionId, answerText, answerJson }) {
+      const body = {
         session_id: sessionId,
         study_id: studyId,
         flow_id: flowId,
         question_id: questionId,
         answer_text: answerText || '',
         answer_json: answerJson || null,
-        created_at: existing >= 0 ? answers[existing].created_at : now(),
         updated_at: now()
       };
-
-      if (existing >= 0) { answers[existing] = answer; }
-      else { answers.push(answer); }
-
-      save(KEYS.ANSWERS, answers);
-      return answer;
-    },
-
-    saveAll(sessionId, studyId, flowId, answersMap) {
-      // answersMap: { questionId -> { text, json } }
-      Object.entries(answersMap).forEach(([questionId, val]) => {
-        this.upsert({
-          sessionId, studyId, flowId, questionId,
-          answerText: val.text || '',
-          answerJson: val.json || null
-        });
+      // one answer per (session_id, question_id) - upsert on that unique constraint
+      const rows = await request('/answers?on_conflict=session_id,question_id', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify(body)
       });
+      return rows[0];
     }
   };
 
   // ===== FLOW SUBMISSIONS =====
   const FlowSubmissions = {
-    getAll() { return load(KEYS.FLOW_SUBMISSIONS, []); },
-
-    getBySession(sessionId) { return this.getAll().filter(s => s.session_id === sessionId); },
-
-    isCompleted(sessionId, flowId) {
-      return this.getAll().some(s => s.session_id === sessionId && s.flow_id === flowId && s.status === 'completed');
+    async getBySession(sessionId) {
+      return (await request('/flow_submissions?session_id=eq.' + encodeURIComponent(sessionId))) || [];
     },
 
-    create({ sessionId, flowId }) {
-      const subs = this.getAll();
-      const existing = subs.findIndex(s => s.session_id === sessionId && s.flow_id === flowId);
-      if (existing >= 0) {
-        subs[existing] = { ...subs[existing], status: 'completed', completed_at: now() };
-        save(KEYS.FLOW_SUBMISSIONS, subs);
-        return subs[existing];
-      }
-      const sub = {
-        id: uid(),
+    async getAll() {
+      return (await request('/flow_submissions?select=*')) || [];
+    },
+
+    async create({ sessionId, flowId }) {
+      const body = {
         session_id: sessionId,
         flow_id: flowId,
-        started_at: now(),
         completed_at: now(),
         status: 'completed'
       };
-      subs.push(sub);
-      save(KEYS.FLOW_SUBMISSIONS, subs);
-      return sub;
+      // one submission per (session_id, flow_id) - upsert on that unique constraint
+      const rows = await request('/flow_submissions?on_conflict=session_id,flow_id', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify(body)
+      });
+      return rows[0];
     }
   };
 
   // ===== ANALYTICS =====
   const Analytics = {
-    studyStats(studyId) {
-      const sessions = Sessions.getByStudy(studyId);
+    async studyStats(studyId) {
+      const sessions = await Sessions.getByStudy(studyId);
       const total = sessions.length;
       const completed = sessions.filter(s => s.status === 'completed').length;
       const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-      // avg completion time
       const completedSessions = sessions.filter(s => s.completed_at && s.started_at);
       const avgTime = completedSessions.length > 0
-        ? completedSessions.reduce((sum, s) => {
-            const ms = new Date(s.completed_at) - new Date(s.started_at);
-            return sum + ms;
-          }, 0) / completedSessions.length
+        ? completedSessions.reduce((sum, s) => sum + (new Date(s.completed_at) - new Date(s.started_at)), 0) / completedSessions.length
         : 0;
 
       return { total, completed, incomplete: total - completed, completionRate, avgTimeMs: avgTime };
     },
 
-    flowStats(studyId, flowId) {
-      const sessions = Sessions.getByStudy(studyId);
-      const answers = Answers.getAll().filter(a => a.study_id === studyId && a.flow_id === flowId);
+    async flowStats(studyId, flowId) {
+      const answers = (await request(
+        '/answers?study_id=eq.' + encodeURIComponent(studyId) + '&flow_id=eq.' + encodeURIComponent(flowId)
+      )) || [];
       const sessionIds = [...new Set(answers.map(a => a.session_id))];
       const responses = sessionIds.length;
 
-      // rating avg
       const ratingAnswers = answers.filter(a => {
         const num = parseFloat(a.answer_text);
         return !isNaN(num) && num >= 1 && num <= 5;
@@ -444,7 +503,6 @@ const DTH = (() => {
         ? (ratingAnswers.reduce((sum, a) => sum + parseFloat(a.answer_text), 0) / ratingAnswers.length).toFixed(1)
         : null;
 
-      // like %
       const likeAnswers = answers.filter(a => a.answer_text === 'like' || a.answer_text === 'dislike');
       const likes = likeAnswers.filter(a => a.answer_text === 'like').length;
       const likePercent = likeAnswers.length > 0 ? Math.round((likes / likeAnswers.length) * 100) : null;
@@ -452,8 +510,10 @@ const DTH = (() => {
       return { responses, avgRating, likePercent };
     },
 
-    questionStats(flowId, questionId) {
-      const answers = Answers.getAll().filter(a => a.flow_id === flowId && a.question_id === questionId);
+    async questionStats(flowId, questionId) {
+      const answers = (await request(
+        '/answers?flow_id=eq.' + encodeURIComponent(flowId) + '&question_id=eq.' + encodeURIComponent(questionId)
+      )) || [];
       const distribution = {};
       answers.forEach(a => {
         const key = a.answer_text || 'No answer';
@@ -463,125 +523,15 @@ const DTH = (() => {
     }
   };
 
-  // ===== SEED DEMO DATA =====
-  function seedDemo() {
-    const existing = Studies.getAll();
-    if (existing.find(s => s.name === 'FastTV Home Screen Evaluation')) return;
-
-    const study = Studies.create({
-      name: 'FastTV Home Screen Evaluation',
-      description: 'Evaluate different Home Screen directions with internal stakeholders.',
-      instructions: 'Please review each prototype carefully before answering the questions. Take your time to interact with each design.',
-      settings: { collectName: true, collectEmail: false, showProgress: true, allowBack: true }
-    });
-
-    const flowConfigs = [
-      { name: 'Home Screen – Version A', description: 'Classic grid layout with featured content banner' },
-      { name: 'Home Screen – Version B', description: 'Full-width hero with horizontal scroll rows' },
-      { name: 'Home Screen – Version C', description: 'Minimal list-based layout with categories' },
-      { name: 'Navigation – Tab Bar', description: 'Bottom tab bar navigation pattern' },
-      { name: 'Search Experience', description: 'Dedicated search screen with filters' },
-    ];
-
-    const questionSets = [
-      [
-        { question_text: 'How would you rate this design overall?', question_type: 'rating', required: true },
-        { question_text: 'Do you like this design direction?', question_type: 'like_dislike', required: true },
-        { question_text: 'What do you like most about this design?', question_type: 'long_text', required: false },
-        { question_text: 'What would you improve?', question_type: 'long_text', required: false },
-        { question_text: 'Was the navigation easy to understand?', question_type: 'yes_no', required: true },
-      ],
-      [
-        { question_text: 'Rate the visual hierarchy of this design.', question_type: 'rating', required: true },
-        { question_text: 'Which aspect do you like most?', question_type: 'multiple_choice', options: ['Layout', 'Typography', 'Colors', 'Content structure', 'Imagery'], required: true },
-        { question_text: 'Do you prefer this over what you\'ve seen before?', question_type: 'yes_no', required: true },
-        { question_text: 'Additional comments', question_type: 'long_text', required: false },
-      ],
-      [
-        { question_text: 'How would you rate this design?', question_type: 'rating', required: true },
-        { question_text: 'Did you like this design?', question_type: 'like_dislike', required: true },
-        { question_text: 'Which design do you prefer so far?', question_type: 'single_choice', options: ['Version A', 'Version B', 'Version C (this one)', 'None of them'], required: false },
-        { question_text: 'Your first impression in one sentence:', question_type: 'short_text', required: false },
-      ],
-    ];
-
-    flowConfigs.forEach((fc, i) => {
-      const flow = Studies.addFlow(study.id, {
-        name: fc.name,
-        description: fc.description,
-        figma_url: 'https://www.figma.com/proto/placeholder-' + (i + 1)
-      });
-
-      const qSet = questionSets[i % questionSets.length];
-      qSet.forEach(q => Studies.addQuestion(study.id, flow.id, q));
-    });
-
-    Studies.publish(study.id);
-
-    // create 20 mock testers
-    const testerNames = ['Priya S.','Arjun M.','Deepa K.','Rahul V.','Sneha P.','Kiran B.','Ananya T.','Vikram R.','Meera J.','Ravi N.',
-      'Pooja L.','Aditya C.','Kavita D.','Suresh H.','Nisha G.','Manjunath A.','Divya F.','Harish E.','Sunita I.','Lokesh O.'];
-    const ratingText = ['3','4','5','5','4','4','5','3','5','4','5','5','4','3','5','4','4','5','3','5'];
-    const likeText = ['like','like','like','dislike','like','like','like','dislike','like','like','like','like','like','dislike','like','like','like','like','dislike','like'];
-
-    const freshStudy = Studies.getById(study.id);
-
-    testerNames.forEach((name, ti) => {
-      const session = Sessions.create({ studyId: study.id, testerName: name });
-      const shouldComplete = ti < 17;
-
-      freshStudy.flows.forEach((flow, fi) => {
-        if (!shouldComplete && fi >= 3) return;
-
-        flow.questions.forEach(q => {
-          let answerText = '';
-          let answerJson = null;
-
-          switch (q.question_type) {
-            case 'rating': answerText = ratingText[(ti + fi) % ratingText.length]; break;
-            case 'like_dislike': answerText = likeText[(ti + fi) % likeText.length]; break;
-            case 'yes_no': answerText = (ti + fi) % 3 === 0 ? 'no' : 'yes'; break;
-            case 'single_choice':
-              if (q.options && q.options.length) answerText = q.options[(ti + fi) % q.options.length];
-              break;
-            case 'multiple_choice':
-              if (q.options && q.options.length) {
-                const selected = q.options.filter((_, i) => (ti + i) % 2 === 0).slice(0,3);
-                answerText = selected.join(', ');
-                answerJson = selected;
-              }
-              break;
-            case 'short_text':
-              answerText = ['Clean and minimal','Very intuitive','Needs improvement','Love the layout','Confusing hierarchy'][ti % 5];
-              break;
-            case 'long_text':
-              answerText = ['The layout feels very clean and content hierarchy is clear. The featured banner works well.','I love how the content is organized. The horizontal scroll pattern is very familiar from other streaming apps.','The minimal approach is refreshing but I worry about content discoverability.','Navigation is intuitive. I could find what I was looking for easily.','The search experience needs more filters. The current view is too basic.'][(ti + fi) % 5];
-              break;
-          }
-
-          Answers.upsert({ sessionId: session.id, studyId: study.id, flowId: flow.id, questionId: q.id, answerText, answerJson });
-        });
-
-        FlowSubmissions.create({ sessionId: session.id, flowId: flow.id });
-      });
-
-      if (shouldComplete) {
-        Sessions.complete(session.id);
-      }
-    });
-
-    console.log('Demo data seeded ✓');
-  }
-
   // ===== EXPORT =====
-  function exportCSV(studyId) {
-    const study = Studies.getById(studyId);
+  async function exportCSV(studyId) {
+    const study = await Studies.getById(studyId);
     if (!study) return '';
 
-    const sessions = Sessions.getByStudy(studyId);
-    const allAnswers = Answers.getAll().filter(a => a.study_id === studyId);
+    const sessions = await Sessions.getByStudy(studyId);
+    const allAnswers = (await request('/answers?study_id=eq.' + encodeURIComponent(studyId))) || [];
 
-    const rows = [['Tester Name','Tester Email','Study','Flow','Question','Question Type','Answer','Timestamp']];
+    const rows = [['Tester Name', 'Tester Email', 'Study', 'Flow', 'Question', 'Question Type', 'Answer', 'Timestamp']];
 
     sessions.forEach(session => {
       const sessionAnswers = allAnswers.filter(a => a.session_id === session.id);
@@ -604,9 +554,9 @@ const DTH = (() => {
     return rows.map(r => r.map(c => `"${String(c || '').replace(/"/g, '""')}"`).join(',')).join('\n');
   }
 
-  function downloadCSV(studyId) {
-    const csv = exportCSV(studyId);
-    const study = Studies.getById(studyId);
+  async function downloadCSV(studyId) {
+    const csv = await exportCSV(studyId);
+    const study = await Studies.getById(studyId);
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -617,5 +567,5 @@ const DTH = (() => {
   }
 
   // ===== PUBLIC API =====
-  return { Auth, Studies, Sessions, Answers, FlowSubmissions, Analytics, seedDemo, exportCSV, downloadCSV, slugify, uid };
+  return { Auth, Studies, Sessions, Answers, FlowSubmissions, Analytics, exportCSV, downloadCSV, slugify };
 })();

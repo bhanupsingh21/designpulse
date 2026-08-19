@@ -306,6 +306,7 @@
     let studyId = null;
     let isDirty = false;
     let editMode = false;
+    let currentStudy = null; // local cache of the study, refreshed after each mutation
 
     // Check if editing
     const urlParams = new URLSearchParams(window.location.search);
@@ -318,17 +319,28 @@
     }
 
     // ===== INIT =====
-    function init() {
-      if (editMode && studyId) {
-        loadStudyForEdit();
-      }
+    async function init() {
       setupSlugSync();
-      renderFlows();
+      if (editMode && studyId) {
+        await loadStudyForEdit();
+      } else {
+        paintFlows();
+      }
     }
 
-    function loadStudyForEdit() {
-      const study = DTH.Studies.getById(studyId);
-      if (!study) return;
+    async function loadStudyForEdit() {
+      try {
+        currentStudy = await DTH.Studies.getById(studyId);
+      } catch (err) {
+        console.error(err);
+        UI.toast('Could not load this study. Check your connection.', 'error');
+        return;
+      }
+      const study = currentStudy;
+      if (!study) {
+        UI.toast('Study not found', 'error');
+        return;
+      }
 
       document.getElementById('study-name').value = study.name;
       document.getElementById('study-desc').value = study.description || '';
@@ -349,7 +361,7 @@
         showPublishPanel(study);
       }
 
-      renderFlows();
+      paintFlows();
       document.getElementById('save-status').textContent = study.status === 'published' ? 'Published' : 'Draft';
     }
 
@@ -401,7 +413,7 @@
     }
 
     // ===== SAVE =====
-    function saveStudy() {
+    async function saveStudy() {
       const data = getStudyData();
       if (!data.name) {
         UI.toast('Please enter a study name', 'error');
@@ -409,20 +421,27 @@
         return false;
       }
 
-      if (studyId) {
-        DTH.Studies.update(studyId, {
-          name: data.name,
-          description: data.description,
-          instructions: data.instructions,
-          slug: data.slug,
-          settings: data.settings
-        });
-      } else {
-        const study = DTH.Studies.create(data);
-        studyId = study.id;
-        editMode = true;
-        // Update URL
-        window.history.replaceState({}, '', 'edit.html?id=' + studyId);
+      try {
+        if (studyId) {
+          currentStudy = await DTH.Studies.update(studyId, {
+            name: data.name,
+            description: data.description,
+            instructions: data.instructions,
+            slug: data.slug,
+            settings: data.settings
+          });
+        } else {
+          const study = await DTH.Studies.create(data);
+          studyId = study.id;
+          editMode = true;
+          currentStudy = study;
+          // Update URL
+          window.history.replaceState({}, '', 'edit.html?id=' + studyId);
+        }
+      } catch (err) {
+        console.error(err);
+        UI.toast('Could not save study. Please try again.', 'error');
+        return false;
       }
 
       markClean();
@@ -433,19 +452,19 @@
 
     // ===== PUBLISH =====
     async function publishStudy() {
-      if (!saveStudy()) return;
+      if (!(await saveStudy())) return;
 
-      const study = DTH.Studies.getById(studyId);
-      const flows = study.flows || [];
+      currentStudy = await DTH.Studies.getById(studyId);
+      const flows = (currentStudy && currentStudy.flows) || [];
 
       if (flows.length === 0) {
         UI.toast('Add at least one flow before publishing', 'error');
         return;
       }
 
-      DTH.Studies.publish(studyId);
-      const published = DTH.Studies.getById(studyId);
-      showPublishPanel(published);
+      await DTH.Studies.publish(studyId);
+      currentStudy = await DTH.Studies.getById(studyId);
+      showPublishPanel(currentStudy);
       document.getElementById('save-status').textContent = 'Published';
       UI.toast('Study published! Link is ready to share.', 'success', 5000);
     }
@@ -471,19 +490,27 @@
     }
 
     function viewResults() {
-      const study = DTH.Studies.getById(studyId);
-      if (study) window.location.href = '../results/results-template.html?slug=' + study.slug;
+      if (currentStudy) window.location.href = '../results/results-template.html?slug=' + currentStudy.slug;
     }
 
     // ===== FLOW BUILDER =====
-    function getFlows() {
-      if (!studyId) return [];
-      const study = DTH.Studies.getById(studyId);
-      return (study && study.flows) ? study.flows.sort((a, b) => a.display_order - b.display_order) : [];
+    // renderFlows() refetches the study fresh, then paints. paintFlows() just
+    // paints whatever is currently cached - use it when currentStudy is
+    // already known-fresh, to avoid a redundant network round trip.
+    async function renderFlows() {
+      if (studyId) {
+        try {
+          currentStudy = await DTH.Studies.getById(studyId);
+        } catch (err) {
+          console.error(err);
+          UI.toast('Could not refresh flows. Check your connection.', 'error');
+        }
+      }
+      paintFlows();
     }
 
-    function renderFlows() {
-      const flows = getFlows();
+    function paintFlows() {
+      const flows = (currentStudy && currentStudy.flows) ? currentStudy.flows : [];
       const list = document.getElementById('flow-list');
       const addArea = document.getElementById('add-flow-area');
       const badge = document.getElementById('flow-count-badge');
@@ -616,7 +643,7 @@
       return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
-    function ensureStudyExists() {
+    async function ensureStudyExists() {
       if (!studyId) {
         const data = getStudyData();
         if (!data.name) {
@@ -624,25 +651,33 @@
           document.getElementById('study-name').focus();
           return false;
         }
-        const study = DTH.Studies.create(data);
-        studyId = study.id;
-        editMode = true;
-        window.history.replaceState({}, '', 'edit.html?id=' + studyId);
-        document.getElementById('page-title-text').textContent = 'Edit Study';
+        try {
+          const study = await DTH.Studies.create(data);
+          studyId = study.id;
+          editMode = true;
+          currentStudy = study;
+          window.history.replaceState({}, '', 'edit.html?id=' + studyId);
+          document.getElementById('page-title-text').textContent = 'Edit Study';
+        } catch (err) {
+          console.error(err);
+          UI.toast('Could not create study. Please try again.', 'error');
+          return false;
+        }
       }
       return true;
     }
 
-    function addFlow() {
-      if (!ensureStudyExists()) return;
-      const study = DTH.Studies.getById(studyId);
-      if ((study.flows || []).length >= 10) {
+    async function addFlow() {
+      if (!(await ensureStudyExists())) return;
+      if (!currentStudy) currentStudy = await DTH.Studies.getById(studyId);
+      if ((currentStudy.flows || []).length >= 10) {
         UI.toast('Maximum 10 flows reached', 'error');
         return;
       }
-      const flow = DTH.Studies.addFlow(studyId, { name: 'Untitled Flow', description: '' });
+      const flow = await DTH.Studies.addFlow(studyId, { name: 'Untitled Flow', description: '' });
+      if (!flow) { UI.toast('Could not add flow', 'error'); return; }
       markDirty();
-      renderFlows();
+      await renderFlows();
       // Auto scroll to new flow
       setTimeout(() => {
         const el = document.getElementById('flow-card-' + flow.id);
@@ -650,33 +685,33 @@
       }, 100);
     }
 
-    function updateFlowField(flowId, field, value) {
+    async function updateFlowField(flowId, field, value) {
       if (!studyId) return;
-      const update = {};
-      update[field] = value;
-      DTH.Studies.updateFlow(studyId, flowId, update);
+      await DTH.Studies.updateFlow(studyId, flowId, { [field]: value });
       markDirty();
-      // Re-render just the badge/subtitle
-      const study = DTH.Studies.getById(studyId);
-      const flow = (study.flows || []).find(f => f.id === flowId);
-      if (flow) {
-        const card = document.getElementById('flow-card-' + flowId);
-        if (card) {
-          const title = card.querySelector('.flow-card-title');
-          if (title) title.textContent = flow.name || 'Untitled Flow';
+      // Re-render just the badge/subtitle, using the local cache (avoid a refetch per keystroke-blur)
+      if (currentStudy) {
+        const flow = (currentStudy.flows || []).find(f => f.id === flowId);
+        if (flow) {
+          flow[field] = value;
+          const card = document.getElementById('flow-card-' + flowId);
+          if (card) {
+            const title = card.querySelector('.flow-card-title');
+            if (title) title.textContent = flow.name || 'Untitled Flow';
+          }
         }
       }
     }
 
     async function duplicateFlow(flowId) {
       if (!studyId) return;
-      const study = DTH.Studies.getById(studyId);
-      if ((study.flows || []).length >= 10) {
+      if (!currentStudy) currentStudy = await DTH.Studies.getById(studyId);
+      if ((currentStudy.flows || []).length >= 10) {
         UI.toast('Maximum 10 flows reached', 'error');
         return;
       }
-      DTH.Studies.duplicateFlow(studyId, flowId);
-      renderFlows();
+      await DTH.Studies.duplicateFlow(studyId, flowId);
+      await renderFlows();
       markDirty();
       UI.toast('Flow duplicated', 'success');
     }
@@ -686,36 +721,25 @@
         title: 'Delete Flow', confirmText: 'Delete', danger: true
       });
       if (ok) {
-        DTH.Studies.deleteFlow(studyId, flowId);
-        renderFlows();
+        await DTH.Studies.deleteFlow(studyId, flowId);
+        await renderFlows();
         markDirty();
         UI.toast('Flow deleted', 'info');
       }
     }
 
-    function moveFlow(flowId, direction) {
-      const study = DTH.Studies.getById(studyId);
-      const flows = (study.flows || []).sort((a,b) => a.display_order - b.display_order);
-      const idx = flows.findIndex(f => f.id === flowId);
-      const newIdx = idx + direction;
-      if (newIdx < 0 || newIdx >= flows.length) return;
-
-      // Swap display orders
-      const temp = flows[idx].display_order;
-      flows[idx].display_order = flows[newIdx].display_order;
-      flows[newIdx].display_order = temp;
-
-      DTH.Studies.update(studyId, { flows });
-      renderFlows();
+    async function moveFlow(flowId, direction) {
+      await DTH.Studies.moveFlow(studyId, flowId, direction);
+      await renderFlows();
       markDirty();
     }
 
     // ===== QUESTION EDITOR =====
-    function openQuestionEditor(flowId, questionId = null) {
-      if (!ensureStudyExists()) return;
+    async function openQuestionEditor(flowId, questionId = null) {
+      if (!(await ensureStudyExists())) return;
 
-      const study = DTH.Studies.getById(studyId);
-      const flow = (study.flows || []).find(f => f.id === flowId);
+      if (!currentStudy) currentStudy = await DTH.Studies.getById(studyId);
+      const flow = (currentStudy.flows || []).find(f => f.id === flowId);
       if (!flow) return;
 
       let existing = null;
@@ -820,7 +844,7 @@
       row.remove();
     }
 
-    function saveQuestion(flowId, questionId) {
+    async function saveQuestion(flowId, questionId) {
       const text = document.getElementById('q-text')?.value.trim();
       const type = document.getElementById('q-type')?.value;
       const required = document.getElementById('q-required')?.checked;
@@ -835,25 +859,31 @@
         if (options.length < 2) { UI.toast('Add at least 2 options', 'error'); return; }
       }
 
-      if (questionId) {
-        DTH.Studies.updateQuestion(studyId, flowId, questionId, { question_text: text, question_type: type, options, required });
-        UI.toast('Question updated', 'success');
-      } else {
-        DTH.Studies.addQuestion(studyId, flowId, { question_text: text, question_type: type, options, required });
-        UI.toast('Question added', 'success');
+      try {
+        if (questionId) {
+          await DTH.Studies.updateQuestion(studyId, flowId, questionId, { question_text: text, question_type: type, options, required });
+          UI.toast('Question updated', 'success');
+        } else {
+          await DTH.Studies.addQuestion(studyId, flowId, { question_text: text, question_type: type, options, required });
+          UI.toast('Question added', 'success');
+        }
+      } catch (err) {
+        console.error(err);
+        UI.toast('Could not save question', 'error');
+        return;
       }
 
       // Close modal
       document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
       document.body.style.overflow = '';
 
-      renderFlows();
+      await renderFlows();
       markDirty();
     }
 
     async function duplicateQuestion(flowId, questionId) {
-      DTH.Studies.duplicateQuestion(studyId, flowId, questionId);
-      renderFlows();
+      await DTH.Studies.duplicateQuestion(studyId, flowId, questionId);
+      await renderFlows();
       markDirty();
       UI.toast('Question duplicated', 'success');
     }
@@ -861,8 +891,8 @@
     async function deleteQuestion(flowId, questionId) {
       const ok = await UI.confirm('Delete this question?', { title: 'Delete Question', confirmText: 'Delete', danger: true });
       if (ok) {
-        DTH.Studies.deleteQuestion(studyId, flowId, questionId);
-        renderFlows();
+        await DTH.Studies.deleteQuestion(studyId, flowId, questionId);
+        await renderFlows();
         markDirty();
         UI.toast('Question deleted', 'info');
       }

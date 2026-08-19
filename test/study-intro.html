@@ -75,9 +75,7 @@
     let existingSession = null;
     let flows = [];
 
-    function init() {
-      DTH.seedDemo();
-
+    async function init() {
       if (!slug) {
         document.getElementById('app').innerHTML = `
           <div style="text-align:center;padding:40px 20px;max-width:400px">
@@ -89,7 +87,19 @@
         return;
       }
 
-      study = DTH.Studies.getBySlug(slug);
+      try {
+        study = await DTH.Studies.getBySlug(slug);
+      } catch (err) {
+        console.error(err);
+        document.getElementById('app').innerHTML = `
+          <div style="text-align:center;padding:40px 20px;max-width:400px">
+            <span class="material-symbols-outlined" style="font-size:3rem;margin-bottom:16px;color:var(--text-warning)" aria-hidden="true">error</span>
+            <h2>Could Not Load Study</h2>
+            <p style="color:var(--text-secondary);margin-top:8px">Please check your connection and reload.</p>
+          </div>
+        `;
+        return;
+      }
 
       if (!study) {
         document.getElementById('app').innerHTML = `
@@ -129,11 +139,11 @@
         return;
       }
 
-      flows = (study.flows || []).sort((a,b) => a.display_order - b.display_order);
+      flows = study.flows || [];
       document.title = study.name + ' · Flowlytics';
 
       // Session recovery
-      existingSession = DTH.Sessions.getCurrentSession(study.id);
+      existingSession = await DTH.Sessions.getCurrentSession(study.id);
       if (existingSession) {
         const overlay = document.getElementById('recovery-overlay');
         overlay.style.display = 'flex';
@@ -175,7 +185,10 @@
     function showNameEntry() {
       const settings = study.settings || {};
       if (settings.allowAnonymous && !settings.collectName) {
-        createAndStart('Anonymous', '');
+        createAndStart('Anonymous', '').catch(err => {
+          console.error(err);
+          UI.toast('Could not start the test. Please try again.', 'error');
+        });
         return;
       }
 
@@ -219,20 +232,26 @@
         const btn = document.getElementById('start-btn');
         btn.disabled = true;
         btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Starting...';
-        await new Promise(r => setTimeout(r, 400));
-        createAndStart(name, email);
+        try {
+          await createAndStart(name, email);
+        } catch (err) {
+          console.error(err);
+          UI.toast('Could not start the test. Please try again.', 'error');
+          btn.disabled = false;
+          btn.innerHTML = 'Start Testing <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span>';
+        }
       });
     }
 
-    function createAndStart(name, email) {
-      const session = DTH.Sessions.create({ studyId: study.id, testerName: name, testerEmail: email });
+    async function createAndStart(name, email) {
+      const session = await DTH.Sessions.create({ studyId: study.id, testerName: name, testerEmail: email });
       DTH.Sessions.setCurrentSession(study.id, session.id);
       goToSession(session.id, 0);
     }
 
-    function continueSession() {
+    async function continueSession() {
       document.getElementById('recovery-overlay').style.display = 'none';
-      const subs = DTH.FlowSubmissions.getBySession(existingSession.id);
+      const subs = await DTH.FlowSubmissions.getBySession(existingSession.id);
       const completedIds = subs.filter(s => s.status === 'completed').map(s => s.flow_id);
       const nextIdx = flows.findIndex(f => !completedIds.includes(f.id));
       const startIdx = nextIdx >= 0 ? nextIdx : 0;

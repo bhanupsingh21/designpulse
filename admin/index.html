@@ -276,21 +276,15 @@
       window.location.href = 'login.html';
     }
 
-    // Seed demo data
-    DTH.seedDemo();
-
     function handleLogout() {
       DTH.Auth.logout();
       window.location.href = 'login.html';
     }
 
-    function renderStats(studies) {
+    async function renderStats(studies) {
       const totalStudies = studies.length;
-      let totalTesters = 0;
-      studies.forEach(s => {
-        const stats = DTH.Analytics.studyStats(s.id);
-        totalTesters += stats.total;
-      });
+      const statsList = await Promise.all(studies.map(s => DTH.Analytics.studyStats(s.id)));
+      const totalTesters = statsList.reduce((sum, st) => sum + st.total, 0);
       const published = studies.filter(s => s.status === 'published').length;
 
       document.getElementById('header-stats').innerHTML = `
@@ -327,8 +321,8 @@
         title: 'Close Study', confirmText: 'Close Study', cancelText: 'Cancel', danger: true
       });
       if (ok) {
-        DTH.Studies.close(id);
-        renderPage();
+        await DTH.Studies.close(id);
+        await renderPage();
         UI.toast('Study closed', 'info');
       }
     }
@@ -339,8 +333,8 @@
         title: 'Delete Study', confirmText: 'Delete', cancelText: 'Cancel', danger: true
       });
       if (ok) {
-        DTH.Studies.delete(id);
-        renderPage();
+        await DTH.Studies.delete(id);
+        await renderPage();
         UI.toast('Study deleted', 'info');
       }
     }
@@ -382,8 +376,8 @@
       `;
     }
 
-    function renderStudyCard(study) {
-      const stats = DTH.Analytics.studyStats(study.id);
+    async function renderStudyCard(study) {
+      const stats = await DTH.Analytics.studyStats(study.id);
       const flowCount = (study.flows || []).length;
 
       return `
@@ -419,8 +413,8 @@
       `;
     }
 
-    function renderStudyListRow(study) {
-      const stats = DTH.Analytics.studyStats(study.id);
+    async function renderStudyListRow(study) {
+      const stats = await DTH.Analytics.studyStats(study.id);
       const flowCount = (study.flows || []).length;
 
       return `
@@ -450,12 +444,21 @@
       `;
     }
 
-    function renderPage() {
-      const allStudies = DTH.Studies.getAll().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      renderStats(allStudies);
-
+    async function renderPage() {
       const grid = document.getElementById('studies-grid');
       grid.className = viewMode === 'list' ? 'studies-list' : 'studies-grid';
+      grid.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-muted)">Loading...</div>';
+
+      let allStudies;
+      try {
+        allStudies = await DTH.Studies.getAll();
+      } catch (err) {
+        console.error(err);
+        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-danger)">Could not load studies. Check your connection and try again.</div>';
+        return;
+      }
+
+      await renderStats(allStudies);
 
       if (allStudies.length === 0) {
         grid.innerHTML = `
@@ -481,7 +484,9 @@
         return;
       }
 
-      grid.innerHTML = studies.map(viewMode === 'list' ? renderStudyListRow : renderStudyCard).join('');
+      const renderFn = viewMode === 'list' ? renderStudyListRow : renderStudyCard;
+      const cards = await Promise.all(studies.map(renderFn));
+      grid.innerHTML = cards.join('');
     }
 
     renderPage();

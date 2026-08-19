@@ -27,16 +27,6 @@
     }
     .login-divider::before { left: 0; }
     .login-divider::after { right: 0; }
-    .demo-hint {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-md);
-      padding: 12px 14px;
-      font-size: 0.8125rem;
-      color: var(--text-secondary);
-      margin-bottom: 20px;
-    }
-    .demo-hint strong { color: var(--text-primary); }
   </style>
 </head>
 <body>
@@ -52,17 +42,11 @@
         <p class="login-hero-text">Sign in to your admin dashboard</p>
       </div>
 
-      <div class="demo-hint">
-        <strong>Demo credentials:</strong><br>
-        Email: <strong>admin@designhub.com</strong><br>
-        Password: <strong>design2026</strong>
-      </div>
-
       <form id="login-form">
         <div class="flex-col gap-16" style="gap:16px;display:flex;flex-direction:column">
           <div class="form-group">
             <label class="form-label" for="email">Email address</label>
-            <input id="email" type="email" class="form-input" placeholder="admin@company.com" value="admin@designhub.com" required autocomplete="email">
+            <input id="email" type="email" class="form-input" placeholder="admin@company.com" required autocomplete="email">
           </div>
 
           <div class="form-group">
@@ -100,18 +84,21 @@
       btn.disabled = true;
       btn.innerHTML = '<div class="spinner"></div> Signing in...';
 
-      // Simulate network delay
-      await new Promise(r => setTimeout(r, 600));
+      let success = false;
+      try {
+        success = await DTH.Auth.login(email, password);
+      } catch (err) {
+        console.error(err);
+      }
 
-      const success = DTH.Auth.login(email, password);
       if (success) {
         UI.toast('Welcome back! Loading dashboard...', 'success');
-        setTimeout(() => { window.location.href = 'index.html'; }, 800);
+        setTimeout(() => { window.location.href = 'index.html'; }, 500);
       } else {
         btn.disabled = false;
         btn.innerHTML = 'Sign In <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>';
         document.getElementById('password').classList.add('error');
-        UI.toast('Invalid credentials. Try password: design2026', 'error', 5000);
+        UI.toast('Invalid email or password.', 'error', 5000);
       }
     });
 

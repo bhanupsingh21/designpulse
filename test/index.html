@@ -20,20 +20,27 @@
     // This page handles ALL /test/*.html requests by detecting the slug from the URL
     // and redirecting to the proper session flow
 
-    DTH.seedDemo();
+    (async () => {
+      const pathParts = window.location.pathname.split('/');
+      const filename = pathParts[pathParts.length - 1];
+      const slug = filename.replace('.html', '');
 
-    const pathParts = window.location.pathname.split('/');
-    const filename = pathParts[pathParts.length - 1];
-    const slug = filename.replace('.html', '');
+      if (slug === '_template' || slug === 'index') {
+        // Already on template, do nothing
+        return;
+      }
 
-    if (slug === '_template' || slug === 'index') {
-      // Already on template, do nothing
-    } else {
       // Redirect to the generic router with slug embedded
       // The index.html in test/ will handle it
       // We just need to make sure index.html can read the slug from window.location
       // Since static HTML can't route dynamically, we re-use index.html logic inline
-      const study = DTH.Studies.getBySlug(slug);
+      let study = null;
+      try {
+        study = await DTH.Studies.getBySlug(slug);
+      } catch (err) {
+        console.error(err);
+      }
+
       if (study) {
         // Store the target slug and redirect to index with query param
         window.location.replace('index.html?slug=' + encodeURIComponent(slug));
@@ -48,7 +55,7 @@
           </div>
         `;
       }
-    }
+    })();
   </script>
 </body>
 </html>

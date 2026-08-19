@@ -142,23 +142,27 @@
     const slug = getSlug();
     let study = null, studyId = null, sessions = [], flows = [];
 
-    function init() {
-      DTH.seedDemo();
-
+    async function init() {
       if (!slug) {
         document.getElementById('results-layout').innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-secondary)"><h2>No Study Specified</h2></div>`;
         return;
       }
 
-      study = DTH.Studies.getBySlug(slug);
+      try {
+        study = await DTH.Studies.getBySlug(slug);
+      } catch (err) {
+        console.error(err);
+        document.getElementById('results-layout').innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-secondary)"><h2>Could Not Load Study</h2><p>Please check your connection and reload.</p></div>`;
+        return;
+      }
       if (!study) {
         document.getElementById('results-layout').innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-secondary)"><h2>Study Not Found</h2><p>Slug: ${slug}</p><a href="../admin/index.html" class="btn btn-primary" style="margin-top:16px;display:inline-flex"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_back</span> Dashboard</a></div>`;
         return;
       }
 
       studyId = study.id;
-      flows = (study.flows || []).sort((a,b) => a.display_order - b.display_order);
-      sessions = DTH.Sessions.getByStudy(studyId);
+      flows = study.flows || [];
+      sessions = await DTH.Sessions.getByStudy(studyId);
 
       document.title = study.name + ' Results · Flowlytics';
       document.getElementById('results-study-name').textContent = study.name;
@@ -166,13 +170,11 @@
       document.getElementById('results-meta').innerHTML = `${UI.statusBadge(study.status)} &nbsp; ${flows.length} flows &nbsp;·&nbsp; Created ${UI.formatDate(study.created_at)}`;
       document.getElementById('edit-btn').onclick = () => { window.location.href = '../admin/edit.html?id=' + studyId; };
 
-      renderStats();
-      renderFlowResults();
-      renderTesters();
+      await Promise.all([renderStats(), renderFlowResults(), renderTesters()]);
     }
 
-    function renderStats() {
-      const stats = DTH.Analytics.studyStats(studyId);
+    async function renderStats() {
+      const stats = await DTH.Analytics.studyStats(studyId);
       document.getElementById('header-stats').innerHTML = `
         <div class="stat-card"><div class="stat-value">${stats.total}</div><div class="stat-label">Total Testers</div></div>
         <div class="stat-card"><div class="stat-value">${stats.completed}</div><div class="stat-label">Completed</div></div>
@@ -181,11 +183,12 @@
       `;
     }
 
-    function renderFlowResults() {
+    async function renderFlowResults() {
       const grid = document.getElementById('flow-results-grid');
       if (!flows.length) { grid.innerHTML = '<div style="color:var(--text-muted);padding:40px">No flows yet.</div>'; return; }
+      const allStats = await Promise.all(flows.map(flow => DTH.Analytics.flowStats(studyId, flow.id)));
       grid.innerHTML = flows.map((flow, i) => {
-        const stats = DTH.Analytics.flowStats(studyId, flow.id);
+        const stats = allStats[i];
         const qCount = (flow.questions || []).length;
         return `
           <div class="flow-result-card" onclick="showFlowDetail('${flow.id}')">
@@ -203,19 +206,21 @@
       }).join('');
     }
 
-    function showFlowDetail(flowId) {
+    async function showFlowDetail(flowId) {
       const flow = flows.find(f => f.id === flowId);
       if (!flow) return;
       document.getElementById('flow-results-grid').style.display = 'none';
       document.getElementById('flow-detail-section').style.display = 'block';
       document.getElementById('flow-detail-name').textContent = flow.name;
 
-      const questions = (flow.questions || []).sort((a,b) => a.display_order - b.display_order);
+      const questions = flow.questions || [];
       const content = document.getElementById('flow-detail-content');
       content.innerHTML = '';
 
-      questions.forEach(q => {
-        const qStats = DTH.Analytics.questionStats(flowId, q.id);
+      const allQStats = await Promise.all(questions.map(q => DTH.Analytics.questionStats(flowId, q.id)));
+
+      questions.forEach((q, qi) => {
+        const qStats = allQStats[qi];
         const block = document.createElement('div');
         block.className = 'detail-panel';
         let resultHtml = '';
@@ -286,9 +291,9 @@
       document.getElementById('flow-detail-section').style.display = 'none';
     }
 
-    function renderTesters() {
+    async function renderTesters() {
       const list = document.getElementById('testers-list');
-      const subs = DTH.FlowSubmissions.getAll();
+      const subs = await DTH.FlowSubmissions.getAll();
       if (!sessions.length) {
         list.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-muted)"><span class="material-symbols-outlined" style="font-size:3rem;margin-bottom:12px" aria-hidden="true">group</span><div style="font-weight:600">No testers yet</div></div>`;
         return;
@@ -310,15 +315,17 @@
       }).join('');
     }
 
-    function showTesterDetail(sid) {
-      const session = DTH.Sessions.getById(sid);
+    async function showTesterDetail(sid) {
+      const session = await DTH.Sessions.getById(sid);
       if (!session) return;
       document.getElementById('testers-list').style.display = 'none';
       document.getElementById('tester-detail-section').style.display = 'block';
       document.getElementById('tester-detail-name').textContent = session.tester_name;
 
-      const answers = DTH.Answers.getBySession(sid);
-      const subs = DTH.FlowSubmissions.getBySession(sid);
+      const [answers, subs] = await Promise.all([
+        DTH.Answers.getBySession(sid),
+        DTH.FlowSubmissions.getBySession(sid)
+      ]);
       const completedIds = subs.filter(s => s.status === 'completed').map(s => s.flow_id);
       const dur = session.completed_at ? UI.formatTime(new Date(session.completed_at) - new Date(session.started_at)) : 'In Progress';
 
@@ -338,7 +345,7 @@
       flows.forEach((flow, fi) => {
         const flowAnswers = answers.filter(a => a.flow_id === flow.id);
         const done = completedIds.includes(flow.id);
-        const questions = (flow.questions || []).sort((a,b) => a.display_order - b.display_order);
+        const questions = flow.questions || [];
         const block = document.createElement('div');
         block.className = 'detail-panel';
         block.style.marginBottom = '16px';
@@ -380,10 +387,15 @@
       UI.toast('Test link copied!', 'success');
     }
 
-    function doExport() {
+    async function doExport() {
       if (!studyId) return;
-      DTH.downloadCSV(studyId);
       UI.toast('Downloading CSV...', 'success');
+      try {
+        await DTH.downloadCSV(studyId);
+      } catch (err) {
+        console.error(err);
+        UI.toast('Could not export CSV', 'error');
+      }
     }
 
     init();

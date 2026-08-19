@@ -248,9 +248,15 @@
     let submitting = false;
 
     // ===== INIT =====
-    function init() {
-      study = DTH.Studies.getBySlug(studySlug);
-      session = DTH.Sessions.getById(sessionId);
+    async function init() {
+      try {
+        [study, session] = await Promise.all([
+          DTH.Studies.getBySlug(studySlug),
+          DTH.Sessions.getById(sessionId)
+        ]);
+      } catch (err) {
+        console.error(err);
+      }
 
       if (!study || !session) {
         document.getElementById('session-content').innerHTML = `
@@ -267,24 +273,24 @@
       document.title = study.name + ' · Flowlytics';
       document.getElementById('header-study-name').textContent = study.name;
 
-      flows = (study.flows || []).sort((a,b) => a.display_order - b.display_order);
+      flows = study.flows || [];
 
       if (study.settings && study.settings.randomizeFlows) {
         flows = flows.sort(() => Math.random() - 0.5);
       }
 
-      renderProgressDots();
-      renderCurrentFlow();
+      await renderProgressDots();
+      await renderCurrentFlow();
     }
 
-    function renderProgressDots() {
+    async function renderProgressDots() {
       const settings = study.settings || {};
       if (!settings.showProgress && settings.showProgress !== undefined) return;
 
       const container = document.getElementById('progress-dots');
       container.style.display = 'flex';
 
-      const subs = DTH.FlowSubmissions.getBySession(sessionId);
+      const subs = await DTH.FlowSubmissions.getBySession(sessionId);
       const completedIds = subs.filter(s => s.status === 'completed').map(s => s.flow_id);
 
       container.innerHTML = flows.map((flow, i) => {
@@ -295,7 +301,7 @@
       }).join('');
     }
 
-    function renderCurrentFlow() {
+    async function renderCurrentFlow() {
       if (currentFlowIdx >= flows.length) {
         showComplete();
         return;
@@ -308,11 +314,11 @@
       document.getElementById('header-flow-label').textContent = `Flow ${flowNum} of ${flowTotal}`;
 
       // Get existing answers for this flow
-      const existingAnswers = DTH.Answers.getByFlowSession(flow.id, sessionId);
+      const existingAnswers = await DTH.Answers.getByFlowSession(flow.id, sessionId);
       const answerMap = {};
       existingAnswers.forEach(a => { answerMap[a.question_id] = a.answer_text; });
 
-      const questions = (flow.questions || []).sort((a,b) => a.display_order - b.display_order);
+      const questions = flow.questions || [];
       const allowBack = (study.settings || {}).allowBack !== false;
       const showBack = allowBack && currentFlowIdx > 0;
 
@@ -435,7 +441,7 @@
       submitSec.appendChild(submitBtn);
 
       card.appendChild(submitSec);
-      renderProgressDots();
+      await renderProgressDots();
 
       // Scroll to top
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -491,32 +497,39 @@
       // Disable submit
       submitting = true;
       const btn = document.getElementById('submit-flow-btn');
+      const isLastFlow = currentFlowIdx === flows.length - 1;
       btn.disabled = true;
       btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Saving...';
 
-      // Save answers
-      Object.entries(answersMap).forEach(([qId, val]) => {
-        DTH.Answers.upsert({
-          sessionId: session.id,
-          studyId: study.id,
-          flowId: flow.id,
-          questionId: qId,
-          answerText: val.text || '',
-          answerJson: val.json || null
-        });
-      });
+      try {
+        // Save answers
+        await Promise.all(Object.entries(answersMap).map(([qId, val]) =>
+          DTH.Answers.upsert({
+            sessionId: session.id,
+            studyId: study.id,
+            flowId: flow.id,
+            questionId: qId,
+            answerText: val.text || '',
+            answerJson: val.json || null
+          })
+        ));
 
-      // Save flow submission
-      DTH.FlowSubmissions.create({ sessionId: session.id, flowId: flow.id });
+        // Save flow submission
+        await DTH.FlowSubmissions.create({ sessionId: session.id, flowId: flow.id });
 
-      // Update session current flow
-      DTH.Sessions.update(session.id, { current_flow: currentFlowIdx + 1 });
-      DTH.Sessions.setCurrentSession(study.id, session.id);
+        // Update session current flow
+        await DTH.Sessions.update(session.id, { current_flow: currentFlowIdx + 1 });
+        DTH.Sessions.setCurrentSession(study.id, session.id);
+      } catch (err) {
+        console.error(err);
+        submitting = false;
+        btn.disabled = false;
+        btn.innerHTML = isLastFlow ? 'Submit Final Flow <span class="material-symbols-outlined icon-sm" aria-hidden="true">check</span>' : 'Submit Flow &amp; Continue <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span>';
+        UI.toast('Could not save your answers. Please try again.', 'error');
+        return;
+      }
 
-      await new Promise(r => setTimeout(r, 500));
       submitting = false;
-
-      const isLastFlow = currentFlowIdx === flows.length - 1;
 
       if (isLastFlow) {
         showComplete();
@@ -560,9 +573,15 @@
       btn.disabled = true;
       btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Submitting...';
 
-      await new Promise(r => setTimeout(r, 700));
-
-      DTH.Sessions.complete(session.id);
+      try {
+        await DTH.Sessions.complete(session.id);
+      } catch (err) {
+        console.error(err);
+        btn.disabled = false;
+        btn.innerHTML = 'Submit Test <span class="material-symbols-outlined icon-sm" aria-hidden="true">check</span>';
+        UI.toast('Could not submit. Please try again.', 'error');
+        return;
+      }
       DTH.Sessions.clearCurrentSession(study.id);
 
       document.getElementById('complete-page').style.display = 'none';
