@@ -1,4 +1,4 @@
-/* ===== FLOWLYTICS - GLOBAL DESIGN SYSTEM (neutral SaaS theme) ===== */
+/* ===== DESIGNPULSE - GLOBAL DESIGN SYSTEM (neutral SaaS theme) ===== */
 
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300..500,0..1,-25..0&display=block');
 @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
@@ -157,8 +157,10 @@ p  { color: var(--text-secondary); line-height: 1.7; }
 }
 
 .logo-wordmark {
-  width: 132px;
-  height: auto;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
   display: block;
 }
 
@@ -894,20 +896,9 @@ p  { color: var(--text-secondary); line-height: 1.7; }
 .empty-state-title { font-size: 1.125rem; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; }
 .empty-state-desc { font-size: 0.9rem; color: var(--text-tertiary); }
 
-/* ===== UNSAVED INDICATOR ===== */
-.unsaved-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 20px;
-  background: rgba(245,158,11,0.08);
-  border: 1px solid rgba(245,158,11,0.25);
-  border-radius: var(--radius-md);
-  margin-bottom: 20px;
-  gap: 12px;
-}
-
-.unsaved-banner-text { font-size: 0.875rem; color: var(--text-warning); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+/* ===== AUTOSAVE STATUS ===== */
+.save-status { font-size: 0.875rem; color: var(--text-tertiary); display: flex; align-items: center; gap: 6px; }
+.save-status .spinner { width: 13px; height: 13px; border-width: 2px; }
 
 /* ===== DIVIDER ===== */
 .divider { height: 1px; background: var(--border-subtle); margin: 20px 0; }

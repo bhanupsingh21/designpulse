@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title id="page-title">Results · Flowlytics</title>
+  <title id="page-title">Results · designpulse</title>
   <meta name="description" content="Study results and analytics">
   <link rel="stylesheet" href="../css/globals.css">
   <style>
@@ -164,7 +164,7 @@
       flows = study.flows || [];
       sessions = await DTH.Sessions.getByStudy(studyId);
 
-      document.title = study.name + ' Results · Flowlytics';
+      document.title = study.name + ' Results · designpulse';
       document.getElementById('results-study-name').textContent = study.name;
       document.getElementById('breadcrumb').textContent = study.name;
       document.getElementById('results-meta').innerHTML = `${UI.statusBadge(study.status)} &nbsp; ${flows.length} flows &nbsp;·&nbsp; Created ${UI.formatDate(study.created_at)}`;

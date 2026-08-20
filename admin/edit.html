@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Create Study · Flowlytics</title>
+  <title>Create Study · designpulse</title>
   <meta name="description" content="Create a new UX testing study with flows and questions">
   <link rel="stylesheet" href="../css/globals.css">
   <style>
@@ -143,7 +143,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">
         <div class="logo-mark">
-          <img src="../flowlytics.svg" alt="Flowlytics" class="logo-wordmark">
+          <span class="logo-wordmark">designpulse</span>
         </div>
       </div>
       <nav class="sidebar-nav">
@@ -163,12 +163,6 @@
             <h1 class="page-title" id="page-title-text">Create New Study</h1>
             <p class="page-subtitle">Build your UX testing study with flows and questions</p>
           </div>
-        </div>
-
-        <!-- Unsaved banner -->
-        <div class="unsaved-banner hidden" id="unsaved-banner">
-          <span class="unsaved-banner-text"><span class="material-symbols-outlined icon-sm" aria-hidden="true">warning</span> Unsaved changes</span>
-          <button class="btn btn-sm btn-secondary" onclick="saveStudy()">Save Changes</button>
         </div>
 
         <!-- STUDY DETAILS -->
@@ -285,10 +279,9 @@
 
       <!-- STICKY SAVE BAR -->
       <div class="sticky-bar">
-        <div style="font-size:0.875rem;color:var(--text-tertiary)" id="save-status">Draft</div>
+        <div class="save-status" id="save-status">Draft</div>
         <div style="display:flex;gap:10px">
           <button class="btn btn-secondary" onclick="UI.navigate('index.html')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_back</span> Back to Dashboard</button>
-          <button class="btn btn-secondary" id="save-btn-2" onclick="saveStudy()">Save</button>
           <button class="btn btn-success" id="publish-btn-2" onclick="publishStudy()"><span class="material-symbols-outlined icon-sm" aria-hidden="true">rocket_launch</span> Publish Study</button>
         </div>
       </div>
@@ -382,16 +375,18 @@
       });
     }
 
-    // ===== DIRTY TRACKING =====
+    // ===== DIRTY TRACKING / AUTOSAVE =====
+    let autosaveTimer = null;
+
     function markDirty() {
       isDirty = true;
-      document.getElementById('unsaved-banner').classList.remove('hidden');
-      document.getElementById('save-status').textContent = 'Unsaved changes';
+      document.getElementById('save-status').innerHTML = '<div class="spinner"></div> Saving...';
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(() => { saveStudy({ silent: true }); }, 1000);
     }
 
     function markClean() {
       isDirty = false;
-      document.getElementById('unsaved-banner').classList.add('hidden');
     }
 
     // ===== GET STUDY DATA FROM FORM =====
@@ -412,12 +407,25 @@
       };
     }
 
-    // ===== SAVE =====
-    async function saveStudy() {
+    // ===== SAVE (autosaved on every change; also called directly before publish) =====
+    let saveInFlight = null;
+
+    function saveStudy(opts = {}) {
+      // Overlapping calls (e.g. an autosave firing while ensureStudyExists()
+      // is mid-flight creating the study) share the same in-flight request
+      // instead of racing to create two studies.
+      if (saveInFlight) return saveInFlight;
+      saveInFlight = doSaveStudy(opts).finally(() => { saveInFlight = null; });
+      return saveInFlight;
+    }
+
+    async function doSaveStudy({ silent = false } = {}) {
       const data = getStudyData();
       if (!data.name) {
-        UI.toast('Please enter a study name', 'error');
-        document.getElementById('study-name').focus();
+        if (!silent) {
+          UI.toast('Please enter a study name', 'error');
+          document.getElementById('study-name').focus();
+        }
         return false;
       }
 
@@ -435,18 +443,20 @@
           studyId = study.id;
           editMode = true;
           currentStudy = study;
+          document.getElementById('page-title-text').textContent = 'Edit Study';
           // Update URL
           window.history.replaceState({}, '', 'edit.html?id=' + studyId);
         }
       } catch (err) {
         console.error(err);
-        UI.toast('Could not save study. Please try again.', 'error');
+        document.getElementById('save-status').textContent = 'Could not save';
+        if (!silent) UI.toast('Could not save study. Please try again.', 'error');
         return false;
       }
 
       markClean();
-      document.getElementById('save-status').textContent = 'Saved';
-      UI.toast('Study saved', 'success');
+      document.getElementById('save-status').textContent = 'All changes saved';
+      if (!silent) UI.toast('Study saved', 'success');
       return true;
     }
 
@@ -645,24 +655,13 @@
 
     async function ensureStudyExists() {
       if (!studyId) {
-        const data = getStudyData();
-        if (!data.name) {
+        if (!getStudyData().name) {
           UI.toast('Please enter a study name first', 'error');
           document.getElementById('study-name').focus();
           return false;
         }
-        try {
-          const study = await DTH.Studies.create(data);
-          studyId = study.id;
-          editMode = true;
-          currentStudy = study;
-          window.history.replaceState({}, '', 'edit.html?id=' + studyId);
-          document.getElementById('page-title-text').textContent = 'Edit Study';
-        } catch (err) {
-          console.error(err);
-          UI.toast('Could not create study. Please try again.', 'error');
-          return false;
-        }
+        // Shares the saveStudy() mutex so this can't race a pending autosave
+        return await saveStudy();
       }
       return true;
     }

@@ -1,4 +1,4 @@
-// ===== FLOWLYTICS - UI COMPONENTS & UTILITIES =====
+// ===== DESIGNPULSE - UI COMPONENTS & UTILITIES =====
 
 const UI = (() => {
   'use strict';

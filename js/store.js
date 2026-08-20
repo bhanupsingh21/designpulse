@@ -1,4 +1,4 @@
-// ===== FLOWLYTICS - DATA STORE (Supabase-backed) =====
+// ===== DESIGNPULSE - DATA STORE (Supabase-backed) =====
 // Every function here talks to a real Supabase project over its REST + Auth
 // APIs. All Studies/Sessions/Answers/FlowSubmissions/Analytics functions are
 // async now (they return Promises) - callers must use await/.then().
