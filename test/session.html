@@ -345,7 +345,7 @@
         // Build embed URL. Figma's embed API always wraps the ORIGINAL share
         // URL (proto/file/design, with its own node-id/query params intact)
         // inside /embed?url=... - there is no separate /embed/<key>/... path.
-        const embedUrl = 'https://www.figma.com/embed?embed_host=share&hide-ui=1&scaling=scale-down-width&url=' + encodeURIComponent(flow.figma_url);
+        const embedUrl = 'https://www.figma.com/embed?embed_host=share&hide-ui=1&scaling=contain&url=' + encodeURIComponent(flow.figma_url);
 
         const figmaWrapper = document.createElement('div');
         figmaWrapper.className = 'figma-wrapper';
