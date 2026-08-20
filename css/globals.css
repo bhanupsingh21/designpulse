@@ -697,7 +697,7 @@ p  { color: var(--text-secondary); line-height: 1.7; }
 
 .figma-embed-frame {
   position: relative;
-  width: 302px;
+  width: 420px;
   max-width: 100%;
   border-radius: 0;
   overflow: visible;
@@ -706,7 +706,7 @@ p  { color: var(--text-secondary); line-height: 1.7; }
 
 .figma-embed-frame iframe {
   width: 100%;
-  height: 590px;
+  height: 820px;
   border: none;
   display: block;
 }
