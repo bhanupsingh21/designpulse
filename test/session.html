@@ -15,7 +15,16 @@
     }
 
     .session-header {
-      display: none;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
     }
 
     .session-study-name {
@@ -136,7 +145,7 @@
       .session-content { max-width: none; padding: 0; }
       .session-columns { display: block; }
       .session-left {
-        min-height: 100vh;
+        min-height: calc(100vh - 74px);
         padding-right: 460px;
         display: flex;
         align-items: center;
@@ -161,6 +170,7 @@
     @media (max-width: 768px) {
       .session-content { padding: 16px 16px 32px; }
       .session-card { padding: 20px; }
+      .session-header { display: none; }
     }
   </style>
 </head>
