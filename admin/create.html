@@ -726,7 +726,41 @@
       return flow.figma_url ? [{ label: 'v1', url: flow.figma_url }] : [];
     }
 
+    function paintFigmaLinks(flowId) {
+      const container = document.getElementById('figma-links-' + flowId);
+      if (!container) return;
+      const links = getFigmaLinks(flowId);
+      const rows = links.length ? links : [{ label: 'v1', url: '' }];
+      container.innerHTML = rows.map((link, li) => `
+        <div class="figma-link-row">
+          <input type="text" class="form-input figma-link-label" value="${escHtml(link.label || '')}" placeholder="v${li + 1}" onchange="updateFigmaLink('${flowId}',${li},'label',this.value)">
+          <input type="url" class="form-input figma-link-url" value="${escHtml(link.url || '')}" placeholder="https://www.figma.com/proto/..." onchange="updateFigmaLink('${flowId}',${li},'url',this.value)">
+          ${link.url ? `<a href="${escHtml(link.url)}" target="_blank" class="btn btn-secondary btn-sm" title="Preview"><span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_new</span></a>` : ''}
+          <button class="option-remove" onclick="removeFigmaLink('${flowId}',${li})" title="Remove"><span class="material-symbols-outlined icon-sm" aria-hidden="true">close</span></button>
+        </div>
+      `).join('');
+
+      const card = document.getElementById('flow-card-' + flowId);
+      const subtitle = card && card.querySelector('.flow-card-subtitle');
+      const flow = currentStudy && (currentStudy.flows || []).find(f => f.id === flowId);
+      if (subtitle && flow) {
+        const qCount = (flow.questions || []).length;
+        subtitle.textContent = `${qCount} question${qCount !== 1 ? 's' : ''}${links.length ? ` · ${links.length} Figma link${links.length !== 1 ? 's' : ''}` : ' · No Figma URL'}`;
+      }
+    }
+
+    // Writes straight into the currentStudy cache, synchronously, before any
+    // paint or network call - so getFigmaLinks() is always accurate the
+    // instant this returns, no matter how quickly the next add/edit/remove
+    // fires (typing + blur + immediately clicking "Add", etc).
+    function setFigmaLinksCache(flowId, links) {
+      if (!currentStudy) return;
+      const flow = (currentStudy.flows || []).find(f => f.id === flowId);
+      if (flow) flow.figma_links = links;
+    }
+
     async function saveFigmaLinks(flowId, links) {
+      setFigmaLinksCache(flowId, links);
       try {
         await DTH.Studies.updateFlow(studyId, flowId, { figma_links: links });
       } catch (err) {
@@ -735,12 +769,13 @@
         return;
       }
       markDirty();
-      await renderFlows();
     }
 
     async function addFigmaLink(flowId) {
       const links = getFigmaLinks(flowId);
       links.push({ label: 'v' + (links.length + 1), url: '' });
+      setFigmaLinksCache(flowId, links);
+      paintFigmaLinks(flowId);
       await saveFigmaLinks(flowId, links);
     }
 
@@ -748,6 +783,7 @@
       const links = getFigmaLinks(flowId);
       if (!links[index]) return;
       links[index] = { ...links[index], [field]: value };
+      setFigmaLinksCache(flowId, links);
       await saveFigmaLinks(flowId, links);
     }
 
@@ -755,6 +791,8 @@
       const links = getFigmaLinks(flowId);
       if (links.length <= 1) { UI.toast('Keep at least one Figma link', 'error'); return; }
       links.splice(index, 1);
+      setFigmaLinksCache(flowId, links);
+      paintFigmaLinks(flowId);
       await saveFigmaLinks(flowId, links);
     }
 
