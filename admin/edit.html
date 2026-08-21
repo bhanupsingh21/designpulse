@@ -438,13 +438,20 @@
 
       try {
         if (studyId) {
-          currentStudy = await DTH.Studies.update(studyId, {
+          // DTH.Studies.update() only PATCHes the studies row and returns
+          // just its own columns (no embedded flows) - merge rather than
+          // replace currentStudy, or every autosave would silently wipe
+          // currentStudy.flows out from under any in-progress flow/Figma
+          // link edit that reads it (they'd then read an empty flows array
+          // and quietly no-op instead of saving).
+          const updated = await DTH.Studies.update(studyId, {
             name: data.name,
             description: data.description,
             instructions: data.instructions,
             slug: data.slug,
             settings: data.settings
           });
+          currentStudy = currentStudy ? { ...currentStudy, ...updated } : updated;
         } else {
           const study = await DTH.Studies.create(data);
           studyId = study.id;
