@@ -22,6 +22,10 @@ create table if not exists flows (
   name text,
   description text,
   figma_url text,
+  -- Multiple prototype versions per flow: [{ "label": "v1", "url": "..." }, ...].
+  -- figma_url is kept (unused going forward) for backward compatibility with
+  -- rows created before this existed.
+  figma_links jsonb not null default '[]'::jsonb,
   display_order int not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

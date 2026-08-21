@@ -119,6 +119,7 @@ const DTH = (() => {
       .sort((a, b) => a.display_order - b.display_order)
       .map(f => ({
         ...f,
+        figma_links: f.figma_links || [],
         questions: (f.questions || []).slice().sort((a, b) => a.display_order - b.display_order)
       }));
     return { ...row, flows };
@@ -252,6 +253,7 @@ const DTH = (() => {
           name: (flow.name || 'Untitled Flow') + ' (Copy)',
           description: flow.description || '',
           figma_url: flow.figma_url || '',
+          figma_links: flow.figma_links || [],
           display_order: (existing ? existing.length : 0) + 1
         })
       });

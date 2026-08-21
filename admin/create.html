@@ -48,6 +48,11 @@
     .option-remove { color: var(--text-muted); cursor: pointer; background: none; border: none; padding: 4px; transition: color var(--transition-fast); display: inline-flex; }
     .option-remove:hover { color: var(--text-danger); }
 
+    .figma-links-list { display: flex; flex-direction: column; gap: 8px; }
+    .figma-link-row { display: flex; align-items: center; gap: 8px; }
+    .figma-link-label { width: 76px; flex: none; }
+    .figma-link-url { flex: 1; }
+
     .question-list-admin { display: flex; flex-direction: column; gap: 8px; }
 
     .q-admin-card {
@@ -575,13 +580,16 @@
 
     function renderFlowCard(flow, num, total) {
       const questions = flow.questions || [];
+      const figmaLinks = (flow.figma_links && flow.figma_links.length)
+        ? flow.figma_links
+        : (flow.figma_url ? [{ label: 'v1', url: flow.figma_url }] : []);
       return `
         <div class="flow-card expanded" id="flow-card-${flow.id}">
           <div class="flow-card-header">
             <div class="flow-number">${num}</div>
             <div style="flex:1">
               <div class="flow-card-title">${flow.name || 'Untitled Flow'}</div>
-              <div class="flow-card-subtitle">${questions.length} question${questions.length !== 1 ? 's' : ''}${flow.figma_url ? ' · Figma linked' : ' · No Figma URL'}</div>
+              <div class="flow-card-subtitle">${questions.length} question${questions.length !== 1 ? 's' : ''}${figmaLinks.length ? ` · ${figmaLinks.length} Figma link${figmaLinks.length !== 1 ? 's' : ''}` : ' · No Figma URL'}</div>
             </div>
             <span class="material-symbols-outlined flow-expand-icon" aria-hidden="true">expand_more</span>
           </div>
@@ -597,12 +605,19 @@
               <input type="text" class="form-input" value="${escHtml(flow.description || '')}" placeholder="Brief description..." data-flow="${flow.id}" onchange="updateFlowField('${flow.id}','description',this.value)">
             </div>
             <div class="form-group">
-              <label class="form-label">Figma Prototype URL</label>
-              <div style="display:flex;gap:8px">
-                <input type="url" class="form-input" value="${escHtml(flow.figma_url || '')}" placeholder="https://www.figma.com/proto/..." data-flow="${flow.id}" onchange="updateFlowField('${flow.id}','figma_url',this.value)" style="flex:1">
-                ${flow.figma_url ? `<a href="${escHtml(flow.figma_url)}" target="_blank" class="btn btn-secondary btn-sm" title="Preview">Preview <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_new</span></a>` : ''}
+              <label class="form-label">Figma Prototype Links</label>
+              <div class="figma-links-list" id="figma-links-${flow.id}">
+                ${(figmaLinks.length ? figmaLinks : [{ label: 'v1', url: '' }]).map((link, li) => `
+                  <div class="figma-link-row">
+                    <input type="text" class="form-input figma-link-label" value="${escHtml(link.label || '')}" placeholder="v${li + 1}" onchange="updateFigmaLink('${flow.id}',${li},'label',this.value)">
+                    <input type="url" class="form-input figma-link-url" value="${escHtml(link.url || '')}" placeholder="https://www.figma.com/proto/..." onchange="updateFigmaLink('${flow.id}',${li},'url',this.value)">
+                    ${link.url ? `<a href="${escHtml(link.url)}" target="_blank" class="btn btn-secondary btn-sm" title="Preview"><span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_new</span></a>` : ''}
+                    <button class="option-remove" onclick="removeFigmaLink('${flow.id}',${li})" title="Remove"><span class="material-symbols-outlined icon-sm" aria-hidden="true">close</span></button>
+                  </div>
+                `).join('')}
               </div>
-              <span class="form-hint">Paste your Figma prototype share link</span>
+              <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addFigmaLink('${flow.id}')"><span class="material-symbols-outlined icon-sm" aria-hidden="true">add</span> Add Figma Link</button>
+              <span class="form-hint">Add multiple versions (v1, v2...) for testers to switch between</span>
             </div>
 
             <!-- Questions -->
@@ -702,6 +717,45 @@
           }
         }
       }
+    }
+
+    function getFigmaLinks(flowId) {
+      const flow = currentStudy && (currentStudy.flows || []).find(f => f.id === flowId);
+      if (!flow) return [];
+      if (flow.figma_links && flow.figma_links.length) return flow.figma_links.slice();
+      return flow.figma_url ? [{ label: 'v1', url: flow.figma_url }] : [];
+    }
+
+    async function saveFigmaLinks(flowId, links) {
+      try {
+        await DTH.Studies.updateFlow(studyId, flowId, { figma_links: links });
+      } catch (err) {
+        console.error(err);
+        UI.toast('Could not save Figma links', 'error');
+        return;
+      }
+      markDirty();
+      await renderFlows();
+    }
+
+    async function addFigmaLink(flowId) {
+      const links = getFigmaLinks(flowId);
+      links.push({ label: 'v' + (links.length + 1), url: '' });
+      await saveFigmaLinks(flowId, links);
+    }
+
+    async function updateFigmaLink(flowId, index, field, value) {
+      const links = getFigmaLinks(flowId);
+      if (!links[index]) return;
+      links[index] = { ...links[index], [field]: value };
+      await saveFigmaLinks(flowId, links);
+    }
+
+    async function removeFigmaLink(flowId, index) {
+      const links = getFigmaLinks(flowId);
+      if (links.length <= 1) { UI.toast('Keep at least one Figma link', 'error'); return; }
+      links.splice(index, 1);
+      await saveFigmaLinks(flowId, links);
     }
 
     async function duplicateFlow(flowId) {

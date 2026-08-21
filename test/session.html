@@ -172,6 +172,73 @@
       .session-card { padding: 20px; }
       .session-header { display: none; }
     }
+
+    /* ===== FIGMA VERSION TABS (v1, v2...) ===== */
+    .figma-version-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .figma-version-tab {
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255,255,255,0.2);
+      background: transparent;
+      color: rgba(255,255,255,0.7);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all var(--transition-fast);
+    }
+    .figma-version-tab.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+
+    /* ===== MOBILE-ONLY PROTOTYPE EXPAND ===== */
+    .figma-expand-btn { display: none; }
+
+    @media (max-width: 768px) {
+      .figma-expand-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        bottom: 20px;
+        right: 16px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(0,0,0,0.6);
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        color: #fff;
+        z-index: 1000;
+        cursor: pointer;
+      }
+      .figma-wrapper.figma-fullscreen {
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+        background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .figma-wrapper.figma-fullscreen .figma-embed-frame {
+        width: 100%;
+        height: 100%;
+      }
+      .figma-wrapper.figma-fullscreen .figma-embed-frame iframe {
+        height: 100%;
+        aspect-ratio: unset;
+      }
+      body.figma-fullscreen-active { overflow: hidden; }
+    }
   </style>
 </head>
 <body>
@@ -341,28 +408,38 @@
       // Figma prototype (left column)
       const protoSection = leftEl;
 
-      if (flow.figma_url && flow.figma_url.includes('figma.com')) {
-        // Build embed URL. Figma's embed API always wraps the ORIGINAL share
-        // URL (proto/file/design, with its own node-id/query params intact)
-        // inside /embed?url=... - there is no separate /embed/<key>/... path.
-        const embedUrl = 'https://www.figma.com/embed?embed_host=share&hide-ui=1&scaling=contain&url=' + encodeURIComponent(flow.figma_url);
+      const figmaLinks = getFigmaLinksFor(flow);
 
+      if (figmaLinks.length > 0) {
         const figmaWrapper = document.createElement('div');
         figmaWrapper.className = 'figma-wrapper';
+
+        const tabsHtml = figmaLinks.length > 1 ? `
+          <div class="figma-version-tabs" id="figma-tabs-${flow.id}">
+            ${figmaLinks.map((link, i) => `
+              <button type="button" class="figma-version-tab${i === 0 ? ' active' : ''}" onclick="switchFigmaVersion('${flow.id}',${i})">${link.label || ('v' + (i + 1))}</button>
+            `).join('')}
+          </div>
+        ` : '';
+
         figmaWrapper.innerHTML = `
+          ${tabsHtml}
           <div class="figma-embed-frame">
+            <button type="button" class="figma-expand-btn" id="figma-expand-${flow.id}" onclick="toggleFigmaExpand('${flow.id}')" aria-label="Expand prototype">
+              <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_full</span>
+            </button>
             <div class="figma-loading" id="figma-loading-${flow.id}">
               <div class="spinner"></div>
               <span>Loading prototype...</span>
             </div>
             <iframe
               id="figma-iframe-${flow.id}"
-              src="${embedUrl}"
+              src="${buildFigmaEmbedUrl(figmaLinks[0].url)}"
               allowfullscreen
               allow="fullscreen"
               style="opacity:0;transition:opacity 0.3s ease"
               onload="onFigmaLoad('${flow.id}')"
-              onerror="onFigmaError('${flow.id}','${flow.figma_url}')"
+              onerror="onFigmaError('${flow.id}','${figmaLinks[0].url}')"
             ></iframe>
           </div>
         `;
@@ -376,7 +453,7 @@
         fallback.style.marginTop = '16px';
         fallback.innerHTML = `
           <p style="color:var(--text-tertiary);font-size:0.875rem;margin-bottom:10px">Prototype couldn't load inside the frame.</p>
-          <a href="${flow.figma_url}" target="_blank" class="btn btn-secondary btn-sm">Open in Figma <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_new</span></a>
+          <a href="${figmaLinks[0].url}" target="_blank" class="btn btn-secondary btn-sm" id="figma-fallback-link-${flow.id}">Open in Figma <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_new</span></a>
         `;
         protoSection.appendChild(fallback);
 
@@ -460,6 +537,67 @@
       const fallback = document.getElementById('figma-fallback-' + flowId);
       if (loading) loading.style.display = 'none';
       if (fallback) fallback.style.display = 'block';
+    }
+
+    // Options are read either from the newer figma_links array ({label, url})
+    // or, for flows saved before that existed, the older single figma_url
+    // field (shown as a single "v1" entry) - always filtered to real Figma URLs.
+    function getFigmaLinksFor(flow) {
+      const raw = (flow.figma_links && flow.figma_links.length)
+        ? flow.figma_links
+        : (flow.figma_url ? [{ label: 'v1', url: flow.figma_url }] : []);
+      return raw.filter(l => l && l.url && l.url.includes('figma.com'));
+    }
+
+    function buildFigmaEmbedUrl(figmaUrl) {
+      // Figma's embed API always wraps the ORIGINAL share URL (proto/file/design,
+      // with its own node-id/query params intact) inside /embed?url=... - there
+      // is no separate /embed/<key>/... path.
+      return 'https://www.figma.com/embed?embed_host=share&hide-ui=1&scaling=contain&url=' + encodeURIComponent(figmaUrl);
+    }
+
+    function switchFigmaVersion(flowId, index) {
+      const flow = flows[currentFlowIdx];
+      if (!flow || flow.id !== flowId) return;
+      const link = getFigmaLinksFor(flow)[index];
+      if (!link) return;
+
+      const tabs = document.getElementById('figma-tabs-' + flowId);
+      if (tabs) {
+        tabs.querySelectorAll('.figma-version-tab').forEach((btn, i) => btn.classList.toggle('active', i === index));
+      }
+
+      const iframe = document.getElementById('figma-iframe-' + flowId);
+      const loading = document.getElementById('figma-loading-' + flowId);
+      const fallback = document.getElementById('figma-fallback-' + flowId);
+      const fallbackLink = document.getElementById('figma-fallback-link-' + flowId);
+      if (!iframe) return;
+
+      if (loading) loading.style.display = 'flex';
+      if (fallback) fallback.style.display = 'none';
+      if (fallbackLink) fallbackLink.setAttribute('href', link.url);
+      iframe.style.opacity = '0';
+      iframe.setAttribute('onerror', `onFigmaError('${flowId}','${link.url}')`);
+      iframe.src = buildFigmaEmbedUrl(link.url);
+    }
+
+    // ===== MOBILE-ONLY EXPAND (CSS-only: hides the rest of the page so
+    // the prototype gets the full screen). Deliberately does NOT call the
+    // native Fullscreen API - that was found to interfere with touch
+    // scrolling inside the Figma iframe on mobile.
+    function toggleFigmaExpand(flowId) {
+      const iframe = document.getElementById('figma-iframe-' + flowId);
+      const wrapper = iframe && iframe.closest('.figma-wrapper');
+      const btn = document.getElementById('figma-expand-' + flowId);
+      if (!wrapper || !btn) return;
+
+      const icon = btn.querySelector('.material-symbols-outlined');
+      const goingFullscreen = !wrapper.classList.contains('figma-fullscreen');
+
+      wrapper.classList.toggle('figma-fullscreen', goingFullscreen);
+      document.body.classList.toggle('figma-fullscreen-active', goingFullscreen);
+      icon.textContent = goingFullscreen ? 'close_fullscreen' : 'open_in_full';
+      btn.setAttribute('aria-label', goingFullscreen ? 'Exit expanded view' : 'Expand prototype');
     }
 
     // ===== SUBMIT FLOW =====
