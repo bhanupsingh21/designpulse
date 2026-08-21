@@ -447,40 +447,45 @@
           </div>
         ` : '';
 
-        figmaWrapper.innerHTML = `
-          <div class="figma-embed-frame">
-            <button type="button" class="figma-expand-btn" id="figma-expand-${flow.id}" onclick="toggleFigmaExpand('${flow.id}')" aria-label="Expand prototype">
-              <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_full</span>
-            </button>
-            <div class="figma-loading" id="figma-loading-${flow.id}">
+        // One pane per version, each with its own iframe - only the active
+        // pane's iframe gets a src (lazy-loaded on first visit). Switching
+        // tabs after that just shows/hides panes, no reload, since each
+        // iframe that's already been loaded stays alive in the background.
+        const panesHtml = figmaLinks.map((link, i) => `
+          <div class="figma-version-pane${i === 0 ? ' active' : ''}" id="figma-pane-${flow.id}-${i}">
+            <div class="figma-loading" id="figma-loading-${flow.id}-${i}">
               <div class="spinner"></div>
               <span>Loading prototype...</span>
             </div>
+            <div class="figma-fallback" id="figma-fallback-${flow.id}-${i}" style="display:none">
+              <p style="color:var(--text-tertiary);font-size:0.875rem;margin-bottom:10px">Prototype couldn't load inside the frame.</p>
+              <a href="${link.url}" target="_blank" class="btn btn-secondary btn-sm">Open in Figma <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_new</span></a>
+            </div>
             <iframe
-              id="figma-iframe-${flow.id}"
-              src="${buildFigmaEmbedUrl(figmaLinks[0].url)}"
+              id="figma-iframe-${flow.id}-${i}"
+              ${i === 0 ? `src="${buildFigmaEmbedUrl(link.url)}"` : ''}
               allowfullscreen
               allow="fullscreen"
               style="opacity:0;transition:opacity 0.3s ease"
-              onload="onFigmaLoad('${flow.id}')"
-              onerror="onFigmaError('${flow.id}','${figmaLinks[0].url}')"
+              onload="onFigmaLoad('${flow.id}',${i})"
+              onerror="onFigmaError('${flow.id}',${i})"
             ></iframe>
+          </div>
+        `).join('');
+
+        figmaWrapper.innerHTML = `
+          <div class="figma-embed-frame">
+            <button type="button" class="figma-reload-btn" onclick="reloadFigmaVersion('${flow.id}')" aria-label="Reload prototype" title="Reload prototype">
+              <span class="material-symbols-outlined icon-sm" aria-hidden="true">refresh</span>
+            </button>
+            <button type="button" class="figma-expand-btn" id="figma-expand-${flow.id}" onclick="toggleFigmaExpand('${flow.id}')" aria-label="Expand prototype">
+              <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_full</span>
+            </button>
+            ${panesHtml}
           </div>
           ${tabsHtml}
         `;
         protoSection.appendChild(figmaWrapper);
-
-        // Fallback link
-        const fallback = document.createElement('div');
-        fallback.id = 'figma-fallback-' + flow.id;
-        fallback.style.display = 'none';
-        fallback.style.textAlign = 'center';
-        fallback.style.marginTop = '16px';
-        fallback.innerHTML = `
-          <p style="color:var(--text-tertiary);font-size:0.875rem;margin-bottom:10px">Prototype couldn't load inside the frame.</p>
-          <a href="${figmaLinks[0].url}" target="_blank" class="btn btn-secondary btn-sm" id="figma-fallback-link-${flow.id}">Open in Figma <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_new</span></a>
-        `;
-        protoSection.appendChild(fallback);
 
       } else {
         protoSection.innerHTML += `
@@ -550,18 +555,18 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    function onFigmaLoad(flowId) {
-      const iframe = document.getElementById('figma-iframe-' + flowId);
-      const loading = document.getElementById('figma-loading-' + flowId);
+    function onFigmaLoad(flowId, index) {
+      const iframe = document.getElementById('figma-iframe-' + flowId + '-' + index);
+      const loading = document.getElementById('figma-loading-' + flowId + '-' + index);
       if (iframe) iframe.style.opacity = '1';
       if (loading) loading.style.display = 'none';
     }
 
-    function onFigmaError(flowId, figmaUrl) {
-      const loading = document.getElementById('figma-loading-' + flowId);
-      const fallback = document.getElementById('figma-fallback-' + flowId);
+    function onFigmaError(flowId, index) {
+      const loading = document.getElementById('figma-loading-' + flowId + '-' + index);
+      const fallback = document.getElementById('figma-fallback-' + flowId + '-' + index);
       if (loading) loading.style.display = 'none';
-      if (fallback) fallback.style.display = 'block';
+      if (fallback) fallback.style.display = 'flex';
     }
 
     // Options are read either from the newer figma_links array ({label, url})
@@ -581,10 +586,15 @@
       return 'https://www.figma.com/embed?embed_host=share&hide-ui=1&scaling=contain&url=' + encodeURIComponent(figmaUrl);
     }
 
+    // Switching versions just shows/hides panes - each pane's iframe is
+    // lazy-loaded the first time its pane is shown, then stays loaded in
+    // the background, so switching back to an already-visited version is
+    // instant instead of reloading.
     function switchFigmaVersion(flowId, index) {
       const flow = flows[currentFlowIdx];
       if (!flow || flow.id !== flowId) return;
-      const link = getFigmaLinksFor(flow)[index];
+      const links = getFigmaLinksFor(flow);
+      const link = links[index];
       if (!link) return;
 
       const tabs = document.getElementById('figma-tabs-' + flowId);
@@ -592,18 +602,39 @@
         tabs.querySelectorAll('.figma-version-tab').forEach((btn, i) => btn.classList.toggle('active', i === index));
       }
 
-      const iframe = document.getElementById('figma-iframe-' + flowId);
-      const loading = document.getElementById('figma-loading-' + flowId);
-      const fallback = document.getElementById('figma-fallback-' + flowId);
-      const fallbackLink = document.getElementById('figma-fallback-link-' + flowId);
+      links.forEach((_, i) => {
+        const pane = document.getElementById('figma-pane-' + flowId + '-' + i);
+        if (pane) pane.classList.toggle('active', i === index);
+      });
+
+      const iframe = document.getElementById('figma-iframe-' + flowId + '-' + index);
+      if (iframe && !iframe.getAttribute('src')) {
+        iframe.src = buildFigmaEmbedUrl(link.url);
+      }
+    }
+
+    // Forces a hard reload of whichever version is currently visible,
+    // for a reviewer who intentionally wants a fresh copy of that prototype.
+    function reloadFigmaVersion(flowId) {
+      const flow = flows[currentFlowIdx];
+      if (!flow || flow.id !== flowId) return;
+      const links = getFigmaLinksFor(flow);
+      const activeIndex = links.findIndex((_, i) => {
+        const pane = document.getElementById('figma-pane-' + flowId + '-' + i);
+        return pane && pane.classList.contains('active');
+      });
+      const link = links[activeIndex];
+      if (!link) return;
+
+      const iframe = document.getElementById('figma-iframe-' + flowId + '-' + activeIndex);
+      const loading = document.getElementById('figma-loading-' + flowId + '-' + activeIndex);
+      const fallback = document.getElementById('figma-fallback-' + flowId + '-' + activeIndex);
       if (!iframe) return;
 
       if (loading) loading.style.display = 'flex';
       if (fallback) fallback.style.display = 'none';
-      if (fallbackLink) fallbackLink.setAttribute('href', link.url);
       iframe.style.opacity = '0';
-      iframe.setAttribute('onerror', `onFigmaError('${flowId}','${link.url}')`);
-      iframe.src = buildFigmaEmbedUrl(link.url);
+      iframe.src = buildFigmaEmbedUrl(link.url) + '&_r=' + Date.now();
     }
 
     // ===== MOBILE-ONLY EXPAND (CSS-only: hides the rest of the page so
@@ -611,9 +642,8 @@
     // native Fullscreen API - that was found to interfere with touch
     // scrolling inside the Figma iframe on mobile.
     function toggleFigmaExpand(flowId) {
-      const iframe = document.getElementById('figma-iframe-' + flowId);
-      const wrapper = iframe && iframe.closest('.figma-wrapper');
       const btn = document.getElementById('figma-expand-' + flowId);
+      const wrapper = btn && btn.closest('.figma-wrapper');
       if (!wrapper || !btn) return;
 
       const icon = btn.querySelector('.material-symbols-outlined');
