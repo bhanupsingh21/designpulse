@@ -141,6 +141,35 @@
 
     .validation-msg.show { display: block; }
 
+    /* ===== FIGMA VERSION TABS (v1, v2...) ===== */
+    .figma-version-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      position: fixed;
+      bottom: 20px;
+      left: 16px;
+      z-index: 1000;
+      max-width: calc(100vw - 80px);
+    }
+    .figma-version-tab {
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255,255,255,0.2);
+      background: transparent;
+      color: rgba(255,255,255,0.7);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all var(--transition-fast);
+    }
+    .figma-version-tab.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+
     @media (min-width: 1024px) {
       .session-content { max-width: none; padding: 0; }
       .session-columns { display: block; }
@@ -174,37 +203,9 @@
 
     @media (max-width: 768px) {
       .session-content { padding: 16px 16px 32px; }
-      .session-card { padding: 20px; }
+      .session-card { padding: 20px; margin-bottom: 56px; }
       .session-header { display: none; }
-    }
-
-    /* ===== FIGMA VERSION TABS (v1, v2...) ===== */
-    .figma-version-tabs {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      position: fixed;
-      bottom: 20px;
-      left: 16px;
-      z-index: 1000;
-      max-width: calc(100vw - 80px);
-    }
-    .figma-version-tab {
-      padding: 6px 14px;
-      border-radius: var(--radius-sm);
-      border: 1px solid rgba(255,255,255,0.2);
-      background: transparent;
-      color: rgba(255,255,255,0.7);
-      font-size: 0.8125rem;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-      transition: all var(--transition-fast);
-    }
-    .figma-version-tab.active {
-      background: #fff;
-      color: #000;
-      border-color: #fff;
+      .figma-version-tabs { z-index: 1001; }
     }
 
     /* ===== MOBILE-ONLY PROTOTYPE EXPAND ===== */
