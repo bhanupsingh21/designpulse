@@ -203,9 +203,18 @@
 
     @media (max-width: 768px) {
       .session-content { padding: 16px 16px 32px; }
-      .session-card { padding: 20px; margin-bottom: 56px; }
+      .session-card { padding: 20px; }
       .session-header { display: none; }
-      .figma-version-tabs { z-index: 1001; }
+      /* In normal flow here (not floating) - sits right below the
+         prototype and above the feedback card. */
+      .figma-version-tabs {
+        position: static;
+        bottom: auto;
+        left: auto;
+        z-index: auto;
+        max-width: none;
+        margin-top: 10px;
+      }
     }
 
     /* ===== MOBILE-ONLY PROTOTYPE EXPAND ===== */
@@ -433,7 +442,6 @@
         ` : '';
 
         figmaWrapper.innerHTML = `
-          ${tabsHtml}
           <div class="figma-embed-frame">
             <button type="button" class="figma-expand-btn" id="figma-expand-${flow.id}" onclick="toggleFigmaExpand('${flow.id}')" aria-label="Expand prototype">
               <span class="material-symbols-outlined icon-sm" aria-hidden="true">open_in_full</span>
@@ -452,6 +460,7 @@
               onerror="onFigmaError('${flow.id}','${figmaLinks[0].url}')"
             ></iframe>
           </div>
+          ${tabsHtml}
         `;
         protoSection.appendChild(figmaWrapper);
 
