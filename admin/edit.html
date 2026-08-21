@@ -42,7 +42,9 @@
     .option-row {
       display: flex; align-items: center; gap: 8px;
     }
-    .option-row input { flex: 1; }
+    .option-row .option-input { flex: 1; }
+    .option-row .option-color-input { width: 96px; flex: none; font-family: var(--font-mono); font-size: 0.8125rem; }
+    .option-color-preview { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border-default); flex-shrink: 0; }
     .option-remove { color: var(--text-muted); cursor: pointer; background: none; border: none; padding: 4px; transition: color var(--transition-fast); display: inline-flex; }
     .option-remove:hover { color: var(--text-danger); }
 
@@ -798,12 +800,21 @@
     }
 
     function renderOptionsEditor(options) {
-      return (options.length ? options : ['', '']).map((opt, i) => `
+      return (options.length ? options : ['', '']).map(UI.normalizeOption).map((opt, i) => `
         <div class="option-row">
-          <input type="text" class="form-input option-input" value="${escHtml(opt)}" placeholder="Option ${i + 1}">
+          <input type="text" class="form-input option-input" value="${escHtml(opt.text)}" placeholder="Option ${i + 1}">
+          <span class="option-color-preview" style="background:${opt.color || 'transparent'}"></span>
+          <input type="text" class="form-input option-color-input" value="${escHtml(opt.color)}" placeholder="#hex" title="Optional color shown with this option" oninput="onOptionColorInput(this)">
           <button class="option-remove" onclick="removeOption(this)" title="Remove"><span class="material-symbols-outlined icon-sm" aria-hidden="true">close</span></button>
         </div>
       `).join('');
+    }
+
+    function onOptionColorInput(input) {
+      const preview = input.previousElementSibling;
+      if (preview && preview.classList.contains('option-color-preview')) {
+        preview.style.background = input.value.trim() || 'transparent';
+      }
     }
 
     function onQTypeChange() {
@@ -828,10 +839,12 @@
       const count = list.children.length + 1;
       row.innerHTML = `
         <input type="text" class="form-input option-input" placeholder="Option ${count}">
+        <span class="option-color-preview" style="background:transparent"></span>
+        <input type="text" class="form-input option-color-input" placeholder="#hex" title="Optional color shown with this option" oninput="onOptionColorInput(this)">
         <button class="option-remove" onclick="removeOption(this)" title="Remove"><span class="material-symbols-outlined icon-sm" aria-hidden="true">close</span></button>
       `;
       list.appendChild(row);
-      row.querySelector('input').focus();
+      row.querySelector('.option-input').focus();
     }
 
     function removeOption(btn) {
@@ -852,9 +865,12 @@
 
       let options = [];
       if (type === 'single_choice' || type === 'multiple_choice') {
-        options = [...document.querySelectorAll('.option-input')]
-          .map(i => i.value.trim())
-          .filter(Boolean);
+        options = [...document.querySelectorAll('.option-row')]
+          .map(row => ({
+            text: row.querySelector('.option-input').value.trim(),
+            color: row.querySelector('.option-color-input').value.trim()
+          }))
+          .filter(o => o.text);
         if (options.length < 2) { UI.toast('Add at least 2 options', 'error'); return; }
       }
 

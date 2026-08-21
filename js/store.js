@@ -390,6 +390,11 @@ const DTH = (() => {
       return this.update(id, { status: 'completed', completed_at: now() });
     },
 
+    async delete(id) {
+      // Cascades to that session's answers + flow_submissions (FK ON DELETE CASCADE).
+      await request('/test_sessions?id=eq.' + encodeURIComponent(id), { method: 'DELETE' });
+    },
+
     // ===== per-device "which session am I on" tracking (kept local) =====
     async getCurrentSession(studyId) {
       const stored = loadLocal(LOCAL_KEYS.CURRENT_SESSION, {});

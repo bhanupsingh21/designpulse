@@ -241,6 +241,13 @@ const UI = (() => {
     { value: 'long_text',       label: 'Long Text',         icon: 'notes' },
   ];
 
+  // Choice options are stored either as plain strings (older questions) or
+  // as { text, color } objects (color is optional) - always read through this.
+  function normalizeOption(opt) {
+    if (opt && typeof opt === 'object') return { text: opt.text || '', color: opt.color || '' };
+    return { text: opt || '', color: '' };
+  }
+
   // ===== RENDER QUESTION FOR TESTER =====
   function renderQuestionForTester(question, existingAnswer = null) {
     const container = document.createElement('div');
@@ -294,12 +301,13 @@ const UI = (() => {
       case 'single_choice': {
         const group = document.createElement('div');
         group.className = 'choice-group';
-        (question.options || ['Option A','Option B']).forEach(opt => {
+        (question.options || ['Option A','Option B']).map(normalizeOption).forEach(opt => {
           const row = document.createElement('div');
-          const isSelected = existingAnswer === opt;
+          const isSelected = existingAnswer === opt.text;
           row.className = 'choice-option' + (isSelected ? ' selected' : '');
-          row.setAttribute('data-value', opt);
-          row.innerHTML = `<span class="choice-indicator">${isSelected ? '<span class="material-symbols-outlined choice-indicator-check" aria-hidden="true">check</span>' : ''}</span><span>${opt}</span>`;
+          row.setAttribute('data-value', opt.text);
+          const swatch = opt.color ? `<span class="choice-color-swatch" style="background:${opt.color}"></span>` : '';
+          row.innerHTML = `<span class="choice-indicator">${isSelected ? '<span class="material-symbols-outlined choice-indicator-check" aria-hidden="true">check</span>' : ''}</span>${swatch}<span>${opt.text}</span>`;
           row.addEventListener('click', function() {
             group.querySelectorAll('.choice-option').forEach(r => {
               r.classList.remove('selected');
@@ -318,12 +326,13 @@ const UI = (() => {
         const group = document.createElement('div');
         group.className = 'choice-group';
         const existingSelected = existingAnswer ? (Array.isArray(existingAnswer) ? existingAnswer : existingAnswer.split(', ')) : [];
-        (question.options || ['Option A','Option B']).forEach(opt => {
+        (question.options || ['Option A','Option B']).map(normalizeOption).forEach(opt => {
           const row = document.createElement('div');
-          const isSelected = existingSelected.includes(opt);
+          const isSelected = existingSelected.includes(opt.text);
           row.className = 'choice-option' + (isSelected ? ' selected' : '');
-          row.setAttribute('data-value', opt);
-          row.innerHTML = `<span class="choice-indicator checkbox-indicator">${isSelected ? '<span class="material-symbols-outlined choice-indicator-check" aria-hidden="true">check</span>' : ''}</span><span>${opt}</span>`;
+          row.setAttribute('data-value', opt.text);
+          const swatch = opt.color ? `<span class="choice-color-swatch" style="background:${opt.color}"></span>` : '';
+          row.innerHTML = `<span class="choice-indicator checkbox-indicator">${isSelected ? '<span class="material-symbols-outlined choice-indicator-check" aria-hidden="true">check</span>' : ''}</span>${swatch}<span>${opt.text}</span>`;
           row.setAttribute('data-multi', 'true');
           row.addEventListener('click', function() {
             this.classList.toggle('selected');
@@ -466,6 +475,6 @@ const UI = (() => {
     showFlowTransition, setActiveNav, markUnsaved, markSaved, setUnsavedBanner,
     formatDate, formatTime, statusBadge, questionTypeLabel,
     QUESTION_TYPES, renderQuestionForTester, getAnswerFromQuestion, renderRatingChart,
-    requireAdmin
+    requireAdmin, normalizeOption
   };
 })();

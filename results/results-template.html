@@ -48,6 +48,14 @@
     .tester-name { font-weight: 600; font-size: 0.9rem; }
     .tester-meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
     .completion-pill { padding: 3px 10px; border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: 700; }
+    .tester-delete-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle); background: var(--bg-card);
+      color: var(--text-muted); cursor: pointer; flex-shrink: 0;
+      transition: all var(--transition-fast);
+    }
+    .tester-delete-btn:hover { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.08); color: var(--text-danger); }
     .pill-complete { background: rgba(16,185,129,0.1); color: var(--text-success); border: 1px solid rgba(16,185,129,0.3); }
     .pill-partial { background: rgba(245,158,11,0.12); color: var(--text-warning); border: 1px solid rgba(245,158,11,0.3); }
     .detail-panel { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); overflow: hidden; margin-bottom: 20px; }
@@ -310,9 +318,32 @@
               <div class="tester-meta">${sessionSubs.length}/${flows.length} flows · ${UI.formatDate(session.created_at)} · ${dur}</div>
             </div>
             <span class="completion-pill ${session.status === 'completed' ? 'pill-complete' : 'pill-partial'}">${session.status === 'completed' ? 'Complete' : 'Partial'}</span>
+            <button type="button" class="tester-delete-btn" onclick="event.stopPropagation(); deleteTesterSession('${session.id}')" title="Delete this tester's data">
+              <span class="material-symbols-outlined icon-sm" aria-hidden="true">delete</span>
+            </button>
           </div>
         `;
       }).join('');
+    }
+
+    async function deleteTesterSession(sid) {
+      const ok = await UI.confirm(
+        'This permanently deletes this tester\'s session, answers, and flow completions. This cannot be undone.',
+        { title: 'Delete tester data?', confirmText: 'Delete', danger: true }
+      );
+      if (!ok) return;
+
+      try {
+        await DTH.Sessions.delete(sid);
+      } catch (err) {
+        console.error(err);
+        UI.toast('Could not delete this tester\'s data', 'error');
+        return;
+      }
+
+      sessions = sessions.filter(s => s.id !== sid);
+      UI.toast('Tester data deleted', 'success');
+      await Promise.all([renderStats(), renderTesters()]);
     }
 
     async function showTesterDetail(sid) {

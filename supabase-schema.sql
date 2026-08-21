@@ -97,9 +97,12 @@ alter table flow_submissions enable row level security;
 create policy "admin_all_studies" on studies for all to authenticated using (true) with check (true);
 create policy "admin_all_flows" on flows for all to authenticated using (true) with check (true);
 create policy "admin_all_questions" on questions for all to authenticated using (true) with check (true);
-create policy "admin_read_sessions" on test_sessions for select to authenticated using (true);
-create policy "admin_read_answers" on answers for select to authenticated using (true);
-create policy "admin_read_submissions" on flow_submissions for select to authenticated using (true);
+-- "for all" (not just select) so an admin can delete a tester's session
+-- (and, via ON DELETE CASCADE, their answers + flow_submissions) from the
+-- results dashboard.
+create policy "admin_all_sessions" on test_sessions for all to authenticated using (true) with check (true);
+create policy "admin_all_answers" on answers for all to authenticated using (true) with check (true);
+create policy "admin_all_submissions" on flow_submissions for all to authenticated using (true) with check (true);
 
 -- Public tester traffic (anon key, no login): can only see published studies,
 -- and can create/update their own session + answers on those studies.

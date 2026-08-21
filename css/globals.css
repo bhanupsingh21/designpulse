@@ -833,6 +833,13 @@ p  { color: var(--text-secondary); line-height: 1.7; }
 
 .checkbox-indicator { border-radius: 5px; }
 
+.choice-color-swatch {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.15);
+  flex-shrink: 0;
+}
+
 /* Yes/No */
 .yesno-group { display: flex; gap: 10px; }
 .yesno-btn {
