@@ -1222,7 +1222,8 @@ p  { color: var(--text-secondary); line-height: 1.7; }
   .study-intro-card { padding: 36px 24px; }
   .login-card { padding: 32px 24px; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  .figma-embed-frame { width: 100%; overflow: hidden; }
+  .figma-wrapper { width: 100%; }
+  .figma-embed-frame { width: 85%; margin: 0 auto; overflow: hidden; }
   .figma-embed-frame iframe { height: auto; aspect-ratio: 420 / 820; }
   .flow-card-actions { flex-wrap: wrap; }
   .page-header { flex-direction: column; }
