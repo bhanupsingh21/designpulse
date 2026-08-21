@@ -165,6 +165,11 @@
       }
       .figma-embed-frame { width: 420px; }
       .submit-section .btn { width: auto; min-width: 220px; }
+      .figma-version-tabs {
+        bottom: 32px;
+        left: 32px;
+        z-index: 40;
+      }
     }
 
     @media (max-width: 768px) {
@@ -177,8 +182,12 @@
     .figma-version-tabs {
       display: flex;
       gap: 6px;
-      margin-bottom: 10px;
       flex-wrap: wrap;
+      position: fixed;
+      bottom: 20px;
+      left: 16px;
+      z-index: 1000;
+      max-width: calc(100vw - 80px);
     }
     .figma-version-tab {
       padding: 6px 14px;
