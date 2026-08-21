@@ -539,7 +539,7 @@
       submitBtn.className = 'btn btn-primary btn-lg';
       submitBtn.style.minWidth = '240px';
       submitBtn.id = 'submit-flow-btn';
-      submitBtn.innerHTML = isLastFlow ? 'Submit Final Flow <span class="material-symbols-outlined icon-sm" aria-hidden="true">check</span>' : 'Submit Flow &amp; Continue <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span>';
+      submitBtn.innerHTML = isLastFlow ? 'Submit Final Flow <span class="material-symbols-outlined icon-sm" aria-hidden="true">check</span>' : 'Submit Feedback &amp; Next Flow <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span>';
       submitBtn.onclick = () => submitFlow(flow);
       submitSec.appendChild(submitBtn);
 
@@ -688,7 +688,7 @@
         console.error(err);
         submitting = false;
         btn.disabled = false;
-        btn.innerHTML = isLastFlow ? 'Submit Final Flow <span class="material-symbols-outlined icon-sm" aria-hidden="true">check</span>' : 'Submit Flow &amp; Continue <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span>';
+        btn.innerHTML = isLastFlow ? 'Submit Final Flow <span class="material-symbols-outlined icon-sm" aria-hidden="true">check</span>' : 'Submit Feedback &amp; Next Flow <span class="material-symbols-outlined icon-sm" aria-hidden="true">arrow_forward</span>';
         UI.toast('Could not save your answers. Please try again.', 'error');
         return;
       }
