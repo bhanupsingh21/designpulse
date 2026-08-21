@@ -157,19 +157,9 @@ p  { color: var(--text-secondary); line-height: 1.7; }
 }
 
 .logo-wordmark {
-  font-size: 1.25rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
+  width: 132px;
+  height: auto;
   display: block;
-}
-
-.logo-spark {
-  font-size: 0.5em;
-  color: #0b6ff9;
-  vertical-align: super;
-  margin: 0 -0.06em;
-  line-height: 1;
 }
 
 .sidebar-nav {
