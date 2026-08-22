@@ -722,6 +722,16 @@ p  { color: var(--text-secondary); line-height: 1.7; }
   color: var(--text-tertiary);
 }
 
+/* One pane per Figma version - only .active is shown. Each pane's own
+   iframe is lazy-loaded (src set on first visit) and then stays alive
+   in the background, so switching back to it is instant, no reload. */
+.figma-version-pane {
+  display: none;
+  position: relative;
+  width: 100%;
+}
+.figma-version-pane.active { display: block; }
+
 .figma-fallback {
   position: absolute;
   inset: 0;
