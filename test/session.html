@@ -610,6 +610,12 @@
 
       const iframe = document.getElementById('figma-iframe-' + flowId + '-' + index);
       if (iframe && !iframe.getAttribute('src')) {
+        // Free up room BEFORE starting the new load, never after - loading a
+        // 3rd version while 2 others were still fully resident (even for the
+        // brief moment before the old one got evicted) was itself enough to
+        // crash mobile browsers, regardless of how quickly it dropped back
+        // down to 2 afterward.
+        makeRoomForFigmaVersion(flowId);
         iframe.src = buildFigmaEmbedUrl(link.url);
       }
       markFigmaVersionUsed(flowId, index);
@@ -624,15 +630,18 @@
     const MAX_LOADED_FIGMA_VERSIONS = 2;
     const loadedFigmaVersions = {}; // flowId -> [index, ...], most-recently-used first
 
+    function makeRoomForFigmaVersion(flowId) {
+      const list = loadedFigmaVersions[flowId] || (loadedFigmaVersions[flowId] = []);
+      while (list.length >= MAX_LOADED_FIGMA_VERSIONS) {
+        unloadFigmaVersion(flowId, list.pop());
+      }
+    }
+
     function markFigmaVersionUsed(flowId, index) {
       const list = loadedFigmaVersions[flowId] || (loadedFigmaVersions[flowId] = []);
       const existingPos = list.indexOf(index);
       if (existingPos !== -1) list.splice(existingPos, 1);
       list.unshift(index);
-
-      while (list.length > MAX_LOADED_FIGMA_VERSIONS) {
-        unloadFigmaVersion(flowId, list.pop());
-      }
     }
 
     function unloadFigmaVersion(flowId, index) {
