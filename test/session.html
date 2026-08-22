@@ -486,6 +486,7 @@
           ${tabsHtml}
         `;
         protoSection.appendChild(figmaWrapper);
+        markFigmaVersionUsed(flow.id, 0);
 
       } else {
         protoSection.innerHTML += `
@@ -611,6 +612,38 @@
       if (iframe && !iframe.getAttribute('src')) {
         iframe.src = buildFigmaEmbedUrl(link.url);
       }
+      markFigmaVersionUsed(flowId, index);
+    }
+
+    // Caps how many versions of a flow stay loaded in memory at once.
+    // Keeping every visited version's embedded prototype alive simultaneously
+    // (no cap) crashed mobile browsers on flows with 3+ versions - each
+    // Figma embed is heavy enough that 3 loaded at once can exceed a phone's
+    // available memory. Only the most recently used ones stay warm; older
+    // ones get unloaded and will show a loading spinner again if revisited.
+    const MAX_LOADED_FIGMA_VERSIONS = 2;
+    const loadedFigmaVersions = {}; // flowId -> [index, ...], most-recently-used first
+
+    function markFigmaVersionUsed(flowId, index) {
+      const list = loadedFigmaVersions[flowId] || (loadedFigmaVersions[flowId] = []);
+      const existingPos = list.indexOf(index);
+      if (existingPos !== -1) list.splice(existingPos, 1);
+      list.unshift(index);
+
+      while (list.length > MAX_LOADED_FIGMA_VERSIONS) {
+        unloadFigmaVersion(flowId, list.pop());
+      }
+    }
+
+    function unloadFigmaVersion(flowId, index) {
+      const iframe = document.getElementById('figma-iframe-' + flowId + '-' + index);
+      if (!iframe) return;
+      iframe.removeAttribute('src');
+      iframe.style.opacity = '0';
+      const loading = document.getElementById('figma-loading-' + flowId + '-' + index);
+      const fallback = document.getElementById('figma-fallback-' + flowId + '-' + index);
+      if (loading) loading.style.display = 'flex';
+      if (fallback) fallback.style.display = 'none';
     }
 
     // Forces a hard reload of whichever version is currently visible,
